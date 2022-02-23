@@ -13,9 +13,11 @@
 #include "./http/http_conn.h"
 #include "./locker/locker.h"
 #include "./threadpool/threadpool.h"
+#include "./timer/timer.h"
 
 #define MAX_USERS 65535  // 最大的接入用户个数，也即是最大的文件描述符个数
 #define MAX_EVENT_NUMBER 10000  // 最大可处理的任务数量
+#define TIMESLOT 5              // 最小超时单位
 
 // 添加文件描述符到epoll对象中
 extern void addfd(int epollfd, int fd, bool one_shot);
@@ -26,13 +28,50 @@ extern void delfd(int epollfd, int fd);
 // 修改文件描述符，重制socket上的EPOLLONESHOT事件，已确保下一次可读时，EPOLLIN事件能被触发
 extern void modfd(int epollfd, int fd, int modev);
 
+extern int setnonblocking(int fd);
+
+// 设置定时器相关参数
+static int pipefd[2];               // 负责读写
+static sort_timer_list timer_list;  // 升序定时器列表
+static int epollfd = 0;
+
+// 信号处理函数
+void sig_handler(int sig) {
+    // 为保证函数的可重入性，保留原来的errno
+    // 可重入性表示中断后再次进入该函数，环境变量与之前相同，不会丢失数据
+    int old_errno = errno;
+    int msg = sig;
+    //将信号值从管道写端写入，传输字符类型，而非整型
+    // 信号最大到64，一字节以内
+    send(pipefd[1], (char*)&msg, 1, 0);
+    errno = old_errno;
+}
+
 // 给信号更改新的处理方式
-void addsig(int sig, void(handler)(int)) {
+void addsig(int sig, void(handler)(int), bool restart = true) {
     struct sigaction sa;
     memset(&sa, '\0', sizeof(sa));
-    sa.sa_handler = handler;
+    sa.sa_handler = handler;  // 设置处理函数
+    if (restart)
+        sa.sa_flags |= SA_RESTART;
+    // 设置临时阻塞信号集，执行信号处理函数时屏蔽所有信号
     sigfillset(&sa.sa_mask);
     assert(sigaction(sig, &sa, NULL) != -1);
+}
+
+//定时处理任务，重新定时以不断触发SIGALRM信号
+void timer_handler() {
+    timer_list.tick();
+    alarm(TIMESLOT);
+}
+
+//定时器回调函数，删除非活动连接在socket上的注册事件，并关闭
+void cb_func(client_data* user_data) {
+    epoll_ctl(epollfd, EPOLL_CTL_DEL, user_data->sockfd, 0);
+    assert(user_data);
+    close(user_data->sockfd);
+    http_conn::m_user_count--;
+    printf("Close fd %d\n", user_data->sockfd);
 }
 
 int main(int argc, char* argv[]) {
@@ -79,14 +118,32 @@ int main(int argc, char* argv[]) {
 
     // 创建epoll对象，事件数组，添加文件描述符
     epoll_event events[MAX_EVENT_NUMBER];
-    int epollfd = epoll_create(5);
+    epollfd = epoll_create(5);
 
     // 将监听文件描述符添加到epoll对象中
     // 所有线程都可以操作这个端口，因此不需要oneshot
     addfd(epollfd, listenfd, false);
     http_conn::m_epollfd = epollfd;
 
-    while (true) {
+    // 创建管道
+    ret = socketpair(PF_UNIX, SOCK_STREAM, 0, pipefd);
+    // 设置写端非阻塞
+    // 这是因为如果send函数在发送时如果缓存已满会阻塞等待，而定时函数执行的需求等级比较低，为节省信号处理函数的执行时间，因此设置为非阻塞
+    setnonblocking(pipefd[1]);
+    addfd(epollfd, pipefd[0], false);
+
+    addsig(SIGALRM, sig_handler, false);
+    addsig(SIGTERM, sig_handler, false);
+
+    client_data* users_timers = new client_data[MAX_USERS];
+
+    bool stop_server = false;
+
+    // 超时标志
+    bool timeout = false;
+    alarm(TIMESLOT);
+
+    while (!stop_server) {
         int number = epoll_wait(epollfd, events, MAX_EVENT_NUMBER, -1);
         if (number < 0 && (errno != EINTR)) {
             printf("Epoll failed\n");
@@ -114,28 +171,104 @@ int main(int argc, char* argv[]) {
                 // 没有异常，将新连接添加到连接数组中
                 // 因为按顺序从前到后操作不方便，就用文件描述符直接作为索引
                 users[connfd].init(connfd, client_addr);
+
+                // 初始化client_data数据
+                // 创建定时器，设置回调函数和超时时间，绑定用户数据，将定时器添加到链表中
+                users_timers[connfd].address = client_addr;
+                users_timers[connfd].sockfd = connfd;
+                m_timer* timer = new m_timer;
+                timer->cb_func = cb_func;
+                timer->expire = time(NULL) + TIMESLOT * 3;
+                timer->user_data = &users_timers[connfd];
+                users_timers[connfd].timer = timer;
+                timer_list.add_timer(timer);
             } else if (events[i].events & (EPOLLHUP | EPOLLRDHUP | EPOLLERR)) {
-                users[sockfd].close_conn();
+                // 服务器端断开连接，响应定时器关闭
+                // users[sockfd].close_conn();
+
+                // 关闭定时器
+                m_timer* timer = users_timers[sockfd].timer;
+                timer->cb_func(&users_timers[sockfd]);
+                if (timer) {
+                    timer_list.del_timer(timer);
+                }
+            } else if (sockfd == pipefd[0] && (events[i].events & EPOLLIN)) {
+                // 处理信号
+                int sig;
+                char signals[1024];
+                ret = recv(sockfd, signals, sizeof(signals), 0);
+                if (ret < 0) {
+                    // 传输错误，处理错误;
+                    continue;
+                } else if (ret == 0) {
+                    // 传输正确，对端的socket已关闭
+                    continue;
+                } else {
+                    for (int i = 0; i < ret; ++i) {
+                        switch (signals[i]) {
+                            case SIGALRM: {
+                                timeout = true;
+                                break;
+                            }
+                            case SIGTERM: {
+                                stop_server = true;
+                            }
+                        }
+                    }
+                }
             } else if (events[i].events & EPOLLIN) {
-                // 由于是边缘触发模式，因此需要一次性把数据读出来
+                // 有新的活动，重置定时器
+                m_timer* timer = users_timers[sockfd].timer;
+                // 检测到读事件，将该事件放入到请求队列里面
                 if (users[sockfd].read_once()) {
                     pool->append(users + sockfd);
+                    // 有数据传输，将该定时器往后移动3个单位
+                    // 并调整定时器在双向链表中的位置
+                    if (timer) {
+                        timer->expire = time(NULL) + 3 * TIMESLOT;
+                        timer_list.mod_timer(timer);
+                        printf("调整一次定时器\n");
+                    }
                 } else {
-                    users[sockfd].close_conn();
+                    // 关闭连接，删除定时器
+                    // users[sockfd].close_conn();
+                    timer->cb_func(&users_timers[sockfd]);
+                    if (timer) {
+                        timer_list.del_timer(timer);
+                    }
                 }
             } else if (events[i].events & EPOLLOUT) {
+                // 遇到读事件，一样需要重置相应定时器
+                m_timer* timer = users_timers[sockfd].timer;
                 // 同上，需要一次性写出
-                if (!users[sockfd].write_once()) {
-                    users[sockfd].close_conn();
+                if (users[sockfd].write_once()) {
+                    if (timer) {
+                        timer->expire = time(NULL) + 3 * TIMESLOT;
+                        timer_list.mod_timer(timer);
+                    }
+                } else {
+                    // 关闭连接，删除定时器
+                    // users[sockfd].close_conn();
+                    timer->cb_func(&users_timers[sockfd]);
+                    if (timer) {
+                        timer_list.del_timer(timer);
+                    }
                 }
             }
+        }
+        if (timeout) {
+            timer_handler();
+            timeout = false;
         }
     }
 
     close(epollfd);
     close(listenfd);
+    close(pipefd[0]);
+    close(pipefd[1]);
     delete pool;
     delete[] users;
+    delete[] users_timers;
 
     return 0;
 }

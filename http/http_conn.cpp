@@ -1,7 +1,7 @@
 #include "http_conn.h"
 
 // 网站根目录
-const char* doc_root = "/home/zht411/Anaconda/C++/webServerSelf/webserver";
+const char* doc_root = "/home/zht411/Anaconda/C++/webServer/webserver";
 
 // 定义HTTP响应的一些状态信息
 const char* ok_200_title = "OK";
@@ -314,7 +314,7 @@ http_conn::HTTP_CODE http_conn::parse_headers(char* text) {
         m_content_length = atoi(text);
     } else {
         // 后续使用日志的形式来记录而不是打印出来
-        printf("oop! unknow header %s\n", text);
+        printf("oop! unknow header: %s\n", text);
     }
     return NO_REQUEST;
 }
@@ -366,6 +366,7 @@ http_conn::HTTP_CODE http_conn::do_request() {
     strncpy(m_real_file + len, m_url, FILENAME_LEN - len - 1);
     // 检查是否有所需要的资源文件
     if (stat(m_real_file, &m_file_stat) < 0) {
+        printf("没有资源：%s\n", m_real_file);
         return NO_REQUEST;
     }
 
