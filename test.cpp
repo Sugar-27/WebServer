@@ -1,31 +1,14 @@
 #include <iostream>
+#include <pthread.h>
+#include <time.h>
 
-class numbered {
-public:
-    numbered() {
-        mysn = unique++;
+int main() {
+    pthread_mutex_t lock;
+    pthread_mutex_lock(&lock);
+    time_t start = time(NULL);
+    while (1) {
+        if (time(NULL) - start > 5) break;
     }
-	numbered(const numbered& n)
-	{
-		mysn = unique++;
-	}
-
-    int mysn;
-    static int unique;
-};
-
-int numbered::unique = 10;
-
-void f(numbered s) {
-    std::cout << s.mysn << std::endl;
-}
-
-int main()
-{
-    numbered a;
-    f(a);
-    // numbered a, b = a, c = b;
-    // f(a);
-    // f(b);
-    // f(c);
+    pthread_mutex_lock(&lock);
+    return 0;
 }
