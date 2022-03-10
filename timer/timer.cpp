@@ -18,7 +18,7 @@ void sort_timer_list::add_timer(m_timer* timer) {
         head = tail = timer;
         return;
     }
-    if (timer->expire <= head->expire) {
+    if (timer->expire < head->expire) {
         timer->next = head;
         head->pre = timer;
         head = timer;
@@ -33,7 +33,7 @@ void sort_timer_list::mod_timer(m_timer* timer) {
     if (!timer)
         return;
     // 定时器调整后的超时时间仍然小于它的下一个定时器
-    if (!timer->next || timer->next->expire >= timer->expire)
+    if (!timer->next || (timer->next->expire > timer->expire))
         return;
 
     // 如果修改的定时器是头定时器
@@ -90,7 +90,7 @@ void sort_timer_list::del_timer(m_timer* timer) {
 // 主要用于调整链表内部结点
 void sort_timer_list::add_timer(m_timer* timer, m_timer* start) {
     m_timer* prev = start;
-    m_timer* temp = prev->pre;
+    m_timer* temp = prev->next;
     while (temp) {
         if (temp->expire > timer->expire) {
             prev->next = timer;
@@ -103,10 +103,9 @@ void sort_timer_list::add_timer(m_timer* timer, m_timer* start) {
         temp = temp->next;
     }
     if (!temp) {
-        // 插到队尾
         prev->next = timer;
-        timer->next = temp;
         timer->pre = prev;
+        timer->next = NULL;
         tail = timer;
     }
 }

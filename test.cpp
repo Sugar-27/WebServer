@@ -1,14 +1,9 @@
-#include <iostream>
 #include <pthread.h>
 #include <time.h>
+#include <iostream>
 
-int main() {
-    pthread_mutex_t lock;
-    pthread_mutex_lock(&lock);
-    time_t start = time(NULL);
-    while (1) {
-        if (time(NULL) - start > 5) break;
-    }
-    pthread_mutex_lock(&lock);
+int main(int argc, char const* argv[]) {
+    char* p = nullptr;
+    *p = 'a';
     return 0;
 }

@@ -8,14 +8,25 @@
 template <typename T>
 class block_queue {
    public:
-    block_queue(int max_size = 1000);
+    block_queue(int max_size = 1000) {
+        if (max_size < 0) {
+            exit(-1);
+        }
+        m_max_size = max_size;
+        m_size = 0;
+        m_array = new T[m_max_size];
+        m_front = -1;
+        m_back = -1;
+        // pthread_cond_init(&m_cond, NULL);
+        // pthread_mutex_init(&m_lock, NULL);
+    }
     ~block_queue();
     void clear();
     bool push(T item);
     bool pop(T& item);
     bool full();
     bool empty();
-    bool size();
+    int size();
     bool front(T& item);
     bool back(T& item);
     int max_size();
@@ -33,20 +44,6 @@ class block_queue {
     locker m_lock;  // 互斥锁
 };
 
-// 构造函数
-template <typename T>
-block_queue<T>::block_queue(int max_size = 1000) : m_max_size(max_size) {
-    if (max_size < 0) {
-        exit(-1);
-    }
-    m_size = 0;
-    m_array = new T[m_max_size];
-    m_front = -1;
-    m_back = -1;
-    // pthread_cond_init(&m_cond, NULL);
-    // pthread_mutex_init(&m_lock, NULL);
-}
-
 // 析构函数
 template <typename T>
 block_queue<T>::~block_queue() {
@@ -59,7 +56,8 @@ block_queue<T>::~block_queue() {
 // 清空队列
 template <typename T>
 void block_queue<T>::clear() {
-    m_lock.lock() m_size = 0;
+    m_lock.lock();
+    m_size = 0;
     m_front = -1;
     m_back = -1;
     m_lock.unlock();
@@ -94,6 +92,7 @@ bool block_queue<T>::pop(T& item) {
     item = m_array[m_front];
     m_size--;
     m_lock.unlock();
+    return true;
 }
 
 // 检查队列是否已满
@@ -101,7 +100,7 @@ template <typename T>
 bool block_queue<T>::full() {
     int tmp;
     m_lock.lock();
-    tmp = m_size();
+    tmp = m_size;
     m_lock.unlock();
     return tmp == m_max_size;
 }
@@ -118,10 +117,10 @@ bool block_queue<T>::empty() {
 
 // 查询队列大小
 template <typename T>
-bool block_queue<T>::size() {
+int block_queue<T>::size() {
     int len;
     m_lock.lock();
-    len = m_size();
+    len = m_size;
     m_lock.unlock();
     return len;
 }

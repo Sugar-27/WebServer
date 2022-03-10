@@ -12,12 +12,16 @@
 #include <unistd.h>
 #include "./http/http_conn.h"
 #include "./locker/locker.h"
+#include "./log/log.h"
 #include "./threadpool/threadpool.h"
 #include "./timer/timer.h"
 
 #define MAX_USERS 65535  // 最大的接入用户个数，也即是最大的文件描述符个数
 #define MAX_EVENT_NUMBER 10000  // 最大可处理的任务数量
 #define TIMESLOT 5              // 最小超时单位
+
+#define SYNLOG  // 同步写日志
+// #define ASYNLOG  // 异步写日志
 
 // 添加文件描述符到epoll对象中
 extern void addfd(int epollfd, int fd, bool one_shot);
@@ -71,14 +75,25 @@ void cb_func(client_data* user_data) {
     assert(user_data);
     close(user_data->sockfd);
     http_conn::m_user_count--;
-    printf("Close fd %d\n", user_data->sockfd);
+    LOG_INFO("close fd %d", user_data->sockfd);
+    Log::get_instance()->flush();
 }
 
 int main(int argc, char* argv[]) {
+#ifdef SYNLOG
+    Log::get_instance()->init("ServerLog", 2000, 800000, 0);  //同步日志模型
+#endif
+
+#ifdef ASYNLOG
+    Log::get_instance()->init("./serverLog/serverLog.txt", 1000, 20000, 8);
+#endif
     if (argc <= 1) {
         printf("usage: %s port_number\n", basename(argv[0]));
         return 1;
     }
+
+    LOG_INFO("%s", "The server starts working");
+
     //  获取端口号
     int port = atoi(argv[1]);  // argv[0]是程序名称
 
@@ -93,6 +108,8 @@ int main(int argc, char* argv[]) {
     } catch (...) {
         return -1;
     }
+
+    LOG_INFO("%s", "服务器线程池创建完成");
 
     // 创建保存客户端连接信息的数组
     http_conn* users = new http_conn[MAX_USERS];
@@ -112,7 +129,7 @@ int main(int argc, char* argv[]) {
     int ret = bind(listenfd, (struct sockaddr*)&address, sizeof(address));
 
     // 监听
-    //当套接字正在处理客户端请求时，如果有新的请求进来，套接字是没法处理的，只能把它放进缓冲区，待当前请求处理完毕后，再从缓冲区中读取出来处理。如果不断有新的请求进来，它们就按照先后顺序在缓冲区中排队，直到缓冲区满。这个缓冲区，就称为请求队列，这里请求队列长度设置为5
+    // 当套接字正在处理客户端请求时，如果有新的请求进来，套接字是没法处理的，只能把它放进缓冲区，待当前请求处理完毕后，再从缓冲区中读取出来处理。如果不断有新的请求进来，它们就按照先后顺序在缓冲区中排队，直到缓冲区满。这个缓冲区，就称为请求队列，这里请求队列长度设置为5
     // 要注意监听只是关注端口是否有连接到来，如果要连接客户端需要使用accept
     ret = listen(listenfd, 5);
 
@@ -142,6 +159,9 @@ int main(int argc, char* argv[]) {
     // 超时标志
     bool timeout = false;
     alarm(TIMESLOT);
+
+    LOG_INFO("%s", "服务器开始监听");
+    Log::get_instance()->flush();
 
     while (!stop_server) {
         int number = epoll_wait(epollfd, events, MAX_EVENT_NUMBER, -1);
@@ -227,7 +247,7 @@ int main(int argc, char* argv[]) {
                     if (timer) {
                         timer->expire = time(NULL) + 3 * TIMESLOT;
                         timer_list.mod_timer(timer);
-                        printf("调整一次定时器\n");
+                        // printf("调整一次定时器\n");
                     }
                 } else {
                     // 关闭连接，删除定时器
