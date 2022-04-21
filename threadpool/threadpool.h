@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <list>
 #include "../locker/locker.h"
+#include "../log/log.h"
 
 template <typename T>
 class threadpool {
@@ -31,17 +32,19 @@ template <typename T>
 threadpool<T>::threadpool(int threadnumber, int max_requests)
     : m_threadnumber(threadnumber),
       m_max_requests(max_requests),
-      m_thread(NULL),
+      m_thread(nullptr),
       m_stop(false) {
     if (m_threadnumber < 0 || m_max_requests < 0) {
         throw std::exception();
     }
+    // 线程池建立，线程池中共有m_threadnumber个线程
     m_thread = new pthread_t[m_threadnumber];
     if (!m_thread) {
         throw std::exception();
     }
+    // 创建线程，填满线程池
     for (int i = 0; i < m_threadnumber; ++i) {
-        if (pthread_create(m_thread + i, NULL, worker, this) != 0) {
+        if (pthread_create(m_thread + i, nullptr, worker, this) != 0) {
             delete[] m_thread;
             throw std::exception();
         }
@@ -51,6 +54,7 @@ threadpool<T>::threadpool(int threadnumber, int max_requests)
             throw std::exception();
         }
         printf("create %dst thread\n", i);
+        Log::get_instance()->flush();
     }
 }
 

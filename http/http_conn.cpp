@@ -1,7 +1,8 @@
 #include "http_conn.h"
 
 // 网站根目录
-const char* doc_root = "/home/zht411/Anaconda/Sugar/webServer/webserver";
+// const char* doc_root = "/home/zht411/Anaconda/Sugar/webServer/webserver";
+const char* doc_root = "/home/sugar/Code/WebServer/webserver";
 
 // 定义HTTP响应的一些状态信息
 const char* ok_200_title = "OK";

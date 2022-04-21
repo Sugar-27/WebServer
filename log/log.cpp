@@ -58,7 +58,6 @@ bool Log::init(const char* file_name,
 
 // 写日志
 void Log::write_log(int level, const char* format, ...) {
-    // printf("enter\n");
     struct timeval now = {0, 0};
     gettimeofday(&now, NULL);
     time_t t = now.tv_sec;
@@ -107,7 +106,6 @@ void Log::write_log(int level, const char* format, ...) {
             snprintf(new_log, 255, "%s%s%s.%lld", m_log_dir, tail, m_log_name,
                      m_count / m_log_split_lines);
         }
-        // printf("%s", new_log); 
         m_file = fopen(new_log, "a");
     }
     m_lock.unlock();
@@ -133,7 +131,6 @@ void Log::write_log(int level, const char* format, ...) {
     if (m_is_async && !m_queue->full()) {
         m_queue->push(log_str);
     } else {
-        // printf("enter\n");
         m_lock.lock();
         // printf("%s", log_str.c_str());
         fputs(log_str.c_str(), m_file);
