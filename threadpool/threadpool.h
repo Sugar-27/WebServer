@@ -7,6 +7,7 @@
 #include "../locker/locker.h"
 #include "../log/log.h"
 
+// 模版T决定的是任务类型，不同的任务有不同的处理方式，处理方式写到T*->process里面
 template <typename T>
 class threadpool {
    public:
@@ -53,8 +54,7 @@ threadpool<T>::threadpool(int threadnumber, int max_requests)
             delete[] m_thread;
             throw std::exception();
         }
-        printf("create %dst thread\n", i);
-        Log::get_instance()->flush();
+        printf("create %dst thread\n", i + 1);
     }
 }
 
@@ -64,6 +64,7 @@ threadpool<T>::~threadpool() {
     m_stop = true;
 }
 
+// 向请求队列中增加请求（读写任务）
 template <typename T>
 bool threadpool<T>::append(T* request) {
     m_listlocker.lock();
@@ -78,6 +79,8 @@ bool threadpool<T>::append(T* request) {
     return true;
 }
 
+// 工作接口函数，由于pthread_create要求是void* fun(void*)，因此不能直接使用成员函数
+// 成员函数默认会传入一个this指针，因此不符合要求，建立一个静态成员函数，将this传进来
 template <typename T>
 void* threadpool<T>::worker(void* arg) {
     threadpool* pool = (threadpool*)arg;
@@ -85,17 +88,21 @@ void* threadpool<T>::worker(void* arg) {
     return pool;
 }
 
+// 实际的工作函数
+// 工作逻辑：只要线程池没停止运行就一直运行，运行过程通过抢占信号的方式来运行
 template <typename T>
 void threadpool<T>::run() {
     // 开始处理任务
     while (!m_stop) {
         // 先wait再lock，防止阻塞时上锁
         m_liststate.wait();
+        // 加锁是一个阻塞函数，别的队列先上锁会等待别的队列处理完再次尝试上锁
         m_listlocker.lock();
         if (m_worklist.empty()) {
             m_listlocker.unlock();
             continue;
         }
+        // 取出队首请求
         T* task = m_worklist.front();
         m_worklist.pop_front();
         m_listlocker.unlock();
