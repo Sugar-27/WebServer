@@ -218,7 +218,7 @@ http_conn::HTTP_CODE http_conn::parse_read() {
         // 获取一行数据
         text = get_line();
         m_start_line = m_check_idx;
-        printf("got 1 http line:%s\n", text);
+        // printf("got 1 http line:%s\n", text);
 
         switch (m_check_state) {
             case CHECK_STATE_REQUESTLINE: {
