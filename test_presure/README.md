@@ -15,7 +15,7 @@ Webbench是有名的网站压力测试工具，它是由[Lionbridge](http://www.
 * 测试示例
 
     ```C++
-	webbench -c 500  -t  30   http://127.0.0.1/phpionfo.php
+	webbench -c 50000  -t  30   http://192.168.0.107:9999/index.html
     ```
 * 参数
 
@@ -26,11 +26,10 @@ Webbench是有名的网站压力测试工具，它是由[Lionbridge](http://www.
 测试结果
 ---------
 Webbench对服务器进行压力测试，经压力测试可以实现上万的并发连接.
-> * 并发连接总数：10500
+> * 并发连接总数：50000
 > * 访问服务器时间：5s
-> * 每秒钟响应请求数：552852 pages/min
-> * 每秒钟传输数据量：1031990 bytes/sec
+> * 总请求响应数：355108 susceed, 0 failed
+> * 每秒钟响应请求数：4261296 pages/min
+> * 每秒钟传输数据量：11290686 bytes/sec
 > * 所有访问均成功
-
-<div align=center><img src="https://github.com/twomonkeyclub/TinyWebServer/blob/master/root/testresult.png" height="201"/> </div>
 
