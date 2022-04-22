@@ -1,6 +1,7 @@
 #include "http_conn.h"
 
 // 网站根目录
+// doc_root = "/home/sugar/Code/WebServer/webserver"
 // const char* doc_root = "/home/zht411/Anaconda/Sugar/webServer/webserver";
 const char* doc_root = "/home/sugar/Code/WebServer/webserver";
 
@@ -57,7 +58,7 @@ void modfd(int epollfd, int fd, int modev) {
 
 // 所有socket上的事件都被注册到同一个epoll内核事件中，所以设置成静态的
 int http_conn::m_epollfd = -1;
-// 所有的客户数
+// 所有的客户数，全部的http_conn共享，因为是总的客户数
 int http_conn::m_user_count = 0;
 
 // 由线程池中的线程调用，这是处理HTTP请求的入口函数
@@ -65,6 +66,7 @@ void http_conn::process() {
     // 解析HTTP请求
     HTTP_CODE read_ret = parse_read();
     if (read_ret == NO_REQUEST) {
+        // NO_REQUEST表示请求不完整，需要继续接收请求
         modfd(m_epollfd, m_sockfd, EPOLLIN);
         return;
     }
@@ -73,6 +75,7 @@ void http_conn::process() {
     if (!write_ret) {
         close_conn();
     }
+    // 注册并监听写事件
     modfd(m_epollfd, m_sockfd, EPOLLOUT);
 }
 
@@ -213,15 +216,19 @@ http_conn::HTTP_CODE http_conn::parse_read() {
     char* text = 0;
 
     // 考虑两种情况，前一个情况解析到了请求体；后一个情况是检验到一行数据;这两种情况都是解析到了完整的数据
+    // line_status==LINE_OK是为了防止无限循环，用LINE_OPEN退出循环
     while ((m_check_state == CHECK_STATE_CONTENT && line_status == LINE_OK) ||
            (line_status = parse_line()) == LINE_OK) {
         // 获取一行数据
+        // parse_line将/r/n置为/0/0
         text = get_line();
+        // 切换新行首指针（m_start_line - 1 指向的是/0）
         m_start_line = m_check_idx;
         // printf("got 1 http line:%s\n", text);
-
+        // 主状态机：CHECK_STATE_REQUESTLINE->CHECK_STATE_HEADER->CHECK_STATE_CONTENT
         switch (m_check_state) {
             case CHECK_STATE_REQUESTLINE: {
+                // 解析请求行，获得HTTP连接的请求方法，目标URL，HTTP版本
                 ret = parse_request_line(text);
                 if (ret == BAD_REQUEST) {
                     return BAD_REQUEST;
@@ -229,6 +236,7 @@ http_conn::HTTP_CODE http_conn::parse_read() {
                 break;
             }
             case CHECK_STATE_HEADER: {
+                // 解析请求头
                 ret = parse_headers(text);
                 if (ret == BAD_REQUEST) {
                     return BAD_REQUEST;
@@ -238,6 +246,7 @@ http_conn::HTTP_CODE http_conn::parse_read() {
                 break;
             }
             case CHECK_STATE_CONTENT: {
+                // 解析请求体
                 ret = parse_content(text);
                 if (ret == GET_REQUEST) {
                     return do_request();
@@ -257,25 +266,28 @@ http_conn::HTTP_CODE http_conn::parse_read() {
 http_conn::HTTP_CODE http_conn::parse_request_line(char* text) {
     // GET /index.html HTTP/1.1
     m_url = strpbrk(text, " ");
-    *m_url++ = '\0';
-    char* method = text;
+    *m_url++ = '\0';    // m_url = "/index.html HTTP/1.1"
+    char* method = text;    // method = "GET"
     if (strcasecmp(method, "GET") == 0) {
         m_method = GET;
+    } else if (strcasecmp(method, "POST") == 0) {
+        m_method = POST;
     } else {
         return BAD_REQUEST;
     }
-
+    // m_version = " HTTP/1.1"(前面有个空格)
     m_version = strpbrk(m_url, " ");
     if (!m_version) {
         return BAD_REQUEST;
     }
-    *m_version++ = '\0';
+    *m_version++ = '\0';    // m_version = "HTTP/1.1"
+    // 只支持HTTP/1.1
     if (strcasecmp(m_version, "HTTP/1.1") != 0) {
         return BAD_REQUEST;
     }
     if (strncasecmp(m_url, "http://", 7) == 0) {
-        m_url += 7;
-        m_url = strchr(m_url, '/');
+        m_url += 7; // m_url = "192.168.0.107:9999/index.html"
+        m_url = strchr(m_url, '/'); // m_url = "/index.html"
     }
     if (!m_url || m_url[0] != '/') {
         return BAD_REQUEST;
@@ -295,9 +307,10 @@ http_conn::HTTP_CODE http_conn::parse_headers(char* text) {
             m_check_state = CHECK_STATE_CONTENT;
             return NO_REQUEST;
         }
+        // 没有请求体则说明读到了最后一行空行，读取结束，返回GET_REQUEST
         return GET_REQUEST;
     } else if (strncasecmp(text, "Host:", 5) == 0) {
-        // Host: 10.206.65.18:10000
+        // Host: 192.168.0.107:10000
         text += 5;
         // 使用strspn忽略掉Host:后面的空格，匹配上第一个不是空格的字符
         text += strspn(text, " ");
@@ -315,7 +328,8 @@ http_conn::HTTP_CODE http_conn::parse_headers(char* text) {
         m_content_length = atoi(text);
     } else {
         // 后续使用日志的形式来记录而不是打印出来
-        printf("oop! unknow header: %s\n", text);
+        // 只获取了必需的头，其他的头没有解析
+        // printf("oop! Unknow header: %s\n", text);
     }
     return NO_REQUEST;
 }
@@ -341,14 +355,15 @@ http_conn::LINE_STATUS http_conn::parse_line() {
                 return LINE_OPEN;
             } else if (read_buffer[m_check_idx + 1] == '\n') {
                 read_buffer[m_check_idx++] = '\0';
-                read_buffer[m_check_idx++] = '\0';
+                read_buffer[m_check_idx++] = '\0';  // 此时m_check_idx指向下一行
                 return LINE_OK;
             }
             return LINE_BAD;
         } else if (temp == '\n') {
+            // temp为'\n'可能是因为上一次解析到了'\r'但读缓存不够，现在读到了随后的'\n'
             if (m_check_idx > 0 && read_buffer[m_check_idx - 1] == '\r') {
                 read_buffer[m_check_idx - 1] = '\0';
-                read_buffer[m_check_idx++] = '\0';
+                read_buffer[m_check_idx++] = '\0';  // 此时m_check_idx指向下一行
                 return LINE_OK;
             }
             return LINE_BAD;
@@ -362,24 +377,33 @@ http_conn::LINE_STATUS http_conn::parse_line() {
 // 映射到内存地址m_file_address处，并告诉调用者获取文件成功
 http_conn::HTTP_CODE http_conn::do_request() {
     // "/home/zht411/Anaconda/C++/webServerSelf/webserver"
+    // 把网站的根目录拷贝到m_real_file，接下来会在这个根目录下找寻文件
     strcpy(m_real_file, doc_root);
     int len = strlen(doc_root);
+    // 在根目录后追加请求资源
     strncpy(m_real_file + len, m_url, FILENAME_LEN - len - 1);
-    // 检查是否有所需要的资源文件
+    // 检查是否有所需要的资源文件，返回值为-1表示写入属性失败，也即没有资源
     if (stat(m_real_file, &m_file_stat) < 0) {
         printf("没有资源：%s\n", m_real_file);
         return NO_REQUEST;
     }
 
-    // 判断访问权限
+    // 判断访问权限(可读)
     if (!(m_file_stat.st_mode & S_IROTH)) {
-        printf("error\n");
+        printf("请求访问文件不可读，拒绝请求\n");
         return FORBIDDEN_REQUEST;
     }
 
     // 判断是否是目录
     if (S_ISDIR(m_file_stat.st_mode)) {
-        return BAD_REQUEST;
+        // 请求的是目录，错误的请求
+        if (strncmp(m_real_file, doc_root, strlen(doc_root)) == 0) {
+            // 如果访问的是网站的根目录，返回默认网页
+            printf("enter\n");
+            strcpy(m_real_file + strlen(m_real_file), "index.html");
+        }
+        // printf("%s\n", m_real_file);
+        else return BAD_REQUEST;
     }
 
     // 以只读方式打开文件
@@ -389,6 +413,7 @@ http_conn::HTTP_CODE http_conn::do_request() {
     // PROT_READ页内容能够被读取
     m_file_address =
         (char*)mmap(0, m_file_stat.st_size, PROT_READ, MAP_PRIVATE, fd, 0);
+    // 关闭文件描述符，防止被文件描述被过度占用
     close(fd);
     return FILE_REQUEST;
 }
@@ -397,7 +422,7 @@ http_conn::HTTP_CODE http_conn::do_request() {
 void http_conn::unmap() {
     if (m_file_address) {
         munmap(m_file_address, m_file_stat.st_size);
-        m_file_address = 0;
+        m_file_address = nullptr;
     }
 }
 
@@ -405,6 +430,7 @@ bool http_conn::add_response(const char* format, ...) {
     if (m_write_idx >= WRITE_BUFFER_SIZE) {
         return false;
     }
+    // 参数列表
     va_list arg_list;
     va_start(arg_list, format);
     int len = vsnprintf(write_buffer + m_write_idx,
