@@ -430,9 +430,11 @@ bool http_conn::add_response(const char* format, ...) {
     if (m_write_idx >= WRITE_BUFFER_SIZE) {
         return false;
     }
-    // 参数列表
+    // 定义可变参数列表
     va_list arg_list;
+    // 将arg_list初始化为传入参数
     va_start(arg_list, format);
+    // 将数据format从可变参数列表写入缓冲区写，返回写入数据的长度
     int len = vsnprintf(write_buffer + m_write_idx,
                         WRITE_BUFFER_SIZE - 1 - m_write_idx, format, arg_list);
     if (len >= (WRITE_BUFFER_SIZE - 1 - m_write_idx)) {
