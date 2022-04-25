@@ -9,6 +9,7 @@
 #include <string.h>
 #include <sys/epoll.h>
 #include <sys/socket.h>
+#include <iostream>
 #include <unistd.h>
 #include "./http/http_conn.h"
 #include "./locker/locker.h"
@@ -45,7 +46,7 @@ void sig_handler(int sig) {
     // 可重入性表示中断后再次进入该函数，环境变量与之前相同，不会丢失数据
     int old_errno = errno;
     int msg = sig;
-    //将信号值从管道写端写入，传输字符类型，而非整型
+    // 将信号值从管道写端写入，传输字符类型，而非整型
     // 信号最大到64，一字节以内
     send(pipefd[1], (char*)&msg, 1, 0);
     errno = old_errno;
@@ -60,7 +61,7 @@ void addsig(int sig, void(handler)(int), bool restart = true) {
         sa.sa_flags |= SA_RESTART;
     // 设置临时阻塞信号集，执行信号处理函数时屏蔽所有信号
     sigfillset(&sa.sa_mask);
-    assert(sigaction(sig, &sa, NULL) != -1);
+    assert(sigaction(sig, &sa, nullptr) != -1);
 }
 
 //定时处理任务，重新定时以不断触发SIGALRM信号
@@ -101,7 +102,7 @@ int main(int argc, char* argv[]) {
     addsig(SIGPIPE, SIG_IGN);
 
     // 创建线程池，初始化线程池
-    threadpool<http_conn>* pool = NULL;  // 一开始设置为NULL
+    threadpool<http_conn>* pool = nullptr;  // 一开始设置为nullptr
     // 尝试创建线程池
     try {
         pool = new threadpool<http_conn>;
@@ -196,10 +197,10 @@ int main(int argc, char* argv[]) {
                 // 创建定时器，设置回调函数和超时时间，绑定用户数据，将定时器添加到链表中
                 users_timers[connfd].address = client_addr;
                 users_timers[connfd].sockfd = connfd;
-                m_timer* timer = new m_timer;
-                timer->cb_func = cb_func;
-                timer->expire = time(NULL) + TIMESLOT * 3;
-                timer->user_data = &users_timers[connfd];
+                // 初始的到时时间是当前的时间+三倍的TIMESLOT
+                // 回调函数设置为cb_func，遇到信号仅通过管道传递信号值，具体业务逻辑由主线程完成
+                time_t t = time(nullptr) + TIMESLOT * 3;
+                m_timer* timer = new m_timer(t, cb_func, &users_timers[connfd]);
                 users_timers[connfd].timer = timer;
                 timer_list.add_timer(timer);
             } else if (events[i].events & (EPOLLHUP | EPOLLRDHUP | EPOLLERR)) {
@@ -245,7 +246,7 @@ int main(int argc, char* argv[]) {
                     // 有数据传输，将该定时器往后移动3个单位
                     // 并调整定时器在双向链表中的位置
                     if (timer) {
-                        timer->expire = time(NULL) + 3 * TIMESLOT;
+                        timer->expire = time(nullptr) + 3 * TIMESLOT;
                         timer_list.mod_timer(timer);
                         // printf("调整一次定时器\n");
                     }
@@ -263,7 +264,7 @@ int main(int argc, char* argv[]) {
                 // 同上，需要一次性写出
                 if (users[sockfd].write_once()) {
                     if (timer) {
-                        timer->expire = time(NULL) + 3 * TIMESLOT;
+                        timer->expire = time(nullptr) + 3 * TIMESLOT;
                         timer_list.mod_timer(timer);
                     }
                 } else {
@@ -282,6 +283,7 @@ int main(int argc, char* argv[]) {
         }
     }
 
+    // 关闭占用的文件描述符
     close(epollfd);
     close(listenfd);
     close(pipefd[0]);
