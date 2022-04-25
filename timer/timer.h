@@ -32,13 +32,15 @@ struct client_data {
 // 定时器类
 class m_timer {
    public:
-    m_timer() : pre(NULL), next(NULL) {}
+    // 每一个定时器都是一个链表的节点，前驱和后继初始化为空指针
+    m_timer() : pre(nullptr), next(nullptr) {}
+    m_timer(time_t t, void (*cb_func)(client_data*), client_data* u) : pre(nullptr), next(nullptr), expire(t), cb_func(cb_func), user_data(u) {}
 
    public:
     m_timer* pre;
     m_timer* next;
-    client_data* user_data;
-    time_t expire;  // 到期时间
+    client_data* user_data;  // 每个定时器存一下对应的用户数据
+    time_t expire;           // 到期时间
     void (*cb_func)(client_data*);
 };
 
