@@ -1,19 +1,17 @@
 #ifndef CONNECTIONPOOL_H
 #define CONNECTIONPOOL_H
 
-#include <atomic>
-#include <condition_variable>
 #include <cstring>
 #include <functional>
 #include <iostream>
 #include <memory>
-#include <mutex>
 #include <queue>
 #include <string>
 #include <thread>
+#include <unistd.h>
+#include "../locker/locker.h"
 #include "connection.h"
 
-using std::atomic;
 using std::queue;
 using std::string;
 using std::thread;
@@ -40,15 +38,15 @@ class ConnectionPool {
     int m_timeout;        // 数据库连接池获取连接的超时时间
     // 连接队列，用于存放连接池中的所有连接
     queue<Connection*> m_connection_queue;
-    std::mutex m_queue_mutex;  // 队列锁，维护线程安全
-    atomic<int> m_connection_cnt;  // 原子操作，保存现在拥有的连接数量
-    std::condition_variable cv;  // 条件变量，用于连接生产者和消费者之间的通信
+    locker m_queue_mutex;  // 队列锁，维护线程安全
+    int m_connection_cnt;  // 原子操作，保存现在拥有的连接数量
+    cond cv;  // 条件变量，用于连接生产者和消费者之间的通信
 
    private:
     ConnectionPool();    // 单例模式，构造函数私有
     bool deal_config();  // 处理配置文件，从配置文件加载配置项
-    void produce_connection();  // 生产者生产一个连接
-    void scan_connection_time(); // 定时器的处理函数
+    static void* produce_connection(void* arg);    // 生产者生产一个连接
+    static void* scan_connection_time(void* arg);  // 定时器的处理函数
 };
 
 #endif
