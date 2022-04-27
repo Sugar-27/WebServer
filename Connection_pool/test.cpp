@@ -31,7 +31,15 @@ int main() {
     sql = "SELECT * FROM user";
     test.query(sql);
     */
-
+    ConnectionPool* tmp = ConnectionPool::get_pool();
+    string stat;
+    while (std::cin >> stat) {
+        if (stat == "quit")
+            break;
+        std::shared_ptr<Connection> p = tmp->get_connection();
+        p->update(sql);
+    }
+    // sleep(10);
     /* 建立连接池，使用一个连接测试连接池是否好用
     ConnectionPool* tmp = ConnectionPool::get_pool();
     string stat;
@@ -65,45 +73,45 @@ int main() {
     thread t1([&]() {
         for (int i = 0; i < 250; ++i) {
             // usleep(10);
-            Connection conn;
-            conn.connect("localhost", "root", "root", "chat");
-            conn.update(sql);
-            // ConnectionPool* pool = ConnectionPool::get_pool();
-            // std::shared_ptr<Connection> p = pool->get_connection();
-            // p->update(sql);
+            // Connection conn;
+            // conn.connect("localhost", "root", "root", "chat");
+            // conn.update(sql);
+            ConnectionPool* pool = ConnectionPool::get_pool();
+            std::shared_ptr<Connection> p = pool->get_connection();
+            p->update(sql);
         }
     });
     thread t2([&]() {
         for (int i = 0; i < 250; ++i) {
             // usleep(10);
-            Connection conn;
-            conn.connect("localhost", "root", "root", "chat");
-            conn.update(sql);
-            // ConnectionPool* pool = ConnectionPool::get_pool();
-            // std::shared_ptr<Connection> p = pool->get_connection();
-            // p->update(sql);
+            // Connection conn;
+            // conn.connect("localhost", "root", "root", "chat");
+            // conn.update(sql);
+            ConnectionPool* pool = ConnectionPool::get_pool();
+            std::shared_ptr<Connection> p = pool->get_connection();
+            p->update(sql);
         }
     });
     thread t3([&]() {
         for (int i = 0; i < 250; ++i) {
             // usleep(10);
-            Connection conn;
-            conn.connect("localhost", "root", "root", "chat");
-            conn.update(sql);
-            // ConnectionPool* pool = ConnectionPool::get_pool();
-            // std::shared_ptr<Connection> p = pool->get_connection();
-            // p->update(sql);
+            // Connection conn;
+            // conn.connect("localhost", "root", "root", "chat");
+            // conn.update(sql);
+            ConnectionPool* pool = ConnectionPool::get_pool();
+            std::shared_ptr<Connection> p = pool->get_connection();
+            p->update(sql);
         }
     });
     thread t4([&]() {
         for (int i = 0; i < 250; ++i) {
             // usleep(10);
-            Connection conn;
-            conn.connect("localhost", "root", "root", "chat");
-            conn.update(sql);
-            // ConnectionPool* pool = ConnectionPool::get_pool();
-            // std::shared_ptr<Connection> p = pool->get_connection();
-            // p->update(sql);
+            // Connection conn;
+            // conn.connect("localhost", "root", "root", "chat");
+            // conn.update(sql);
+            ConnectionPool* pool = ConnectionPool::get_pool();
+            std::shared_ptr<Connection> p = pool->get_connection();
+            p->update(sql);
         }
     });
     t1.join();
@@ -112,7 +120,6 @@ int main() {
     t4.join();
 
     cout << clock() - begin << "ms" << endl;
-    // cout << "1111" << endl;
 
 #endif
     printf("结束\n");
