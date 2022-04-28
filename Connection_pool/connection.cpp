@@ -40,5 +40,5 @@ MYSQL_RES* Connection::query(string& sql) {
         LOG("查询失败：" + sql);
         return nullptr;
     }
-    return mysql_use_result(_conn);
+    return mysql_store_result(_conn);
 }
