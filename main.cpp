@@ -12,6 +12,7 @@
 #include <iostream>
 #include <unistd.h>
 #include "./http/http_conn.h"
+#include "./Connection_pool/connectionPool.h"
 #include "./locker/locker.h"
 #include "./log/log.h"
 #include "./threadpool/threadpool.h"
@@ -101,6 +102,15 @@ int main(int argc, char* argv[]) {
     // 更改对SIGPIPE信号的处理方式
     addsig(SIGPIPE, SIG_IGN);
 
+    // 创建数据库连接池
+    ConnectionPool* conn_pool = ConnectionPool::get_pool();
+    // 测试代码
+    // string sql(
+    //     "INSERT INTO user (name, age, sex) VALUES ('Test_user2', 1, "
+    //     "'female');");
+    // std::shared_ptr<Connection> p = conn_pool->get_connection();
+    // p->update(sql);
+
     // 创建线程池，初始化线程池
     threadpool<http_conn>* pool = nullptr;  // 一开始设置为nullptr
     // 尝试创建线程池
@@ -114,6 +124,15 @@ int main(int argc, char* argv[]) {
 
     // 创建保存客户端连接信息的数组
     http_conn* users = new http_conn[MAX_USERS];
+
+    // 读取用户名和密码，进行缓存
+    users->init_mysql_result(conn_pool);
+    // 测试代码，看一下能否正确读取
+    for (auto& kV : users->user_info) {
+        string name = kV.first;
+        string password = kV.second;
+        cout << name << " " << password << endl;
+    }
 
     // 创建监听端口套接字
     int listenfd = socket(PF_INET, SOCK_STREAM, 0);
