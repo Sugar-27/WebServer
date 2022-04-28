@@ -18,6 +18,12 @@
 #include <sys/types.h>
 #include <sys/uio.h>
 #include <unistd.h>
+#include <memory>
+#include <string>
+#include <unordered_map>
+#include "../Connection_pool/connectionPool.h"
+
+using std::string;
 
 // 设置文件描述符非阻塞
 int setnonblocking(int fd);
@@ -75,6 +81,9 @@ class http_conn {
     // 0.读取到一个完整的行 1.行出错 2.行数据尚且不完整
     enum LINE_STATUS { LINE_OK = 0, LINE_BAD, LINE_OPEN };
 
+    // 数据库用的哈希表，用来存用户和密码
+    static std::unordered_map<string, string> user_info;
+
    public:
     // 所有的连接共享同一个epoll对象，也就是将所有socket上的事件都注册到同一个epoll内核事件中
     static int m_epollfd;
@@ -93,6 +102,7 @@ class http_conn {
     void close_conn();                               // 关闭连接
     bool read_once();                                // 一次性读入
     bool write_once();                               // 一次性写出
+    static void init_mysql_result(ConnectionPool* conn_pool); // 将数据库的用户名和密码读到内存里
 
    private:
     /* data */

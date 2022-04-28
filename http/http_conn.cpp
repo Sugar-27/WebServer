@@ -56,6 +56,9 @@ void modfd(int epollfd, int fd, int modev) {
     epoll_ctl(epollfd, EPOLL_CTL_MOD, fd, &ev);
 }
 
+// 初始化static变量
+std::unordered_map<string, string> http_conn::user_info;
+
 // 所有socket上的事件都被注册到同一个epoll内核事件中，所以设置成静态的
 int http_conn::m_epollfd = -1;
 // 所有的客户数，全部的http_conn共享，因为是总的客户数
@@ -528,4 +531,28 @@ bool http_conn::process_write(HTTP_CODE ret) {
     m_iv_count = 1;
     bytes_to_send = m_write_idx;
     return true;
+}
+
+void http_conn::init_mysql_result(ConnectionPool* conn_pool) {
+    std::shared_ptr<Connection> p = conn_pool->get_connection();
+    string sql = "select name, password from user_info;";
+    //在user表中检索username，passwd数据，浏览器端输入
+    MYSQL_RES* result = nullptr;
+    // 从表中检索完整的结果集
+    result = p->query(sql);
+    if (!result) {
+        cout << "查询失败" << endl;
+        return;
+    }
+    // 返回结果集中的列数
+    int num_fields = mysql_num_fields(result);
+    // 返回所有字段结构的数组
+    MYSQL_FIELD* fields = mysql_fetch_field(result);
+    // 从结果集里获取下一行，将对应的用户名和密码存到map中
+    while (MYSQL_ROW row = mysql_fetch_row(result)) {
+        string name(row[0]);
+        string password(row[1]);
+        user_info[name] = password;
+    }
+
 }
