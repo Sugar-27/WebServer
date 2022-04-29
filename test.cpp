@@ -24,8 +24,17 @@ int mon_log(char* format, ...) {
 }
 //调用上面的函数
 int main() {
-    int i = mon_log("%s,%d,%d,%d", "asd", 2, 3, 4);
-    printf("%d\n", i);
+    // int i = mon_log("%s,%d,%d,%d", "asd", 2, 3, 4);
+    // printf("%d\n", i);
+    char name[100], password[100];
+    for (int i = 0; i < 5; ++i) name[i] = 'a' + i;
+    name[5] = '\0';
+    string test_name(name);
+    string test_password("12345");
+    string test("INSERT INTO user_infor (name, password, age, sex) VALUES ('Tom', 'test_password', 10, 'male');");
+    string sql("INSERT INTO user_infor (name, password) VALUES ('" + test_name + "', '" + test_password + "');");
+    cout << test << endl;
+    cout << sql << endl;
 
     return 0;
 }
