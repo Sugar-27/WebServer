@@ -6,5 +6,5 @@ CREATE TABLE IF NOT EXISTS `user_info`(
    `sex` ENUM('male', 'female', 'privary'),
    PRIMARY KEY (`id`)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8;
-INSERT INTO user_infor (name, password, age, sex) VALUES ('Tom', 'test_password', 10, 'male');
+INSERT INTO user_info (name, password, age, sex) VALUES ('Tom', 'test_password', 10, 'male');
 INSERT INTO user_info (name, password, age, sex) VALUES ('Amy', 'test_password2', 11, 'female');
