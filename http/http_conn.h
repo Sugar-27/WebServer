@@ -102,7 +102,8 @@ class http_conn {
     void close_conn();                               // 关闭连接
     bool read_once();                                // 一次性读入
     bool write_once();                               // 一次性写出
-    static void init_mysql_result(ConnectionPool* conn_pool); // 将数据库的用户名和密码读到内存里
+    static void init_mysql_result(
+        ConnectionPool* conn_pool);  // 将数据库的用户名和密码读到内存里
 
    private:
     /* data */
@@ -119,6 +120,8 @@ class http_conn {
     char* m_version;            // HTTP版本
     METHOD m_method;            // 请求方法
     char* m_host;               // 主机名
+    int cgi;                    // 是否启用cgi
+    char* m_string;             // 保存post报文
     bool m_iflink;              // HTTP请求是否保持连接
     int m_content_length;       // 请求报文的请求体的长度
     // 客户请求的目标文件完整路径，内容等于doc_root+m_url
@@ -131,6 +134,8 @@ class http_conn {
     // 我们将采用writev来执行写操作，所以定义下面两个成员，其中m_iv_count表示被写内存块的数量。
     struct iovec m_iv[2];
     int m_iv_count;
+    // 保护哈希表
+    locker m_lock;
 
    private:
     /* function */

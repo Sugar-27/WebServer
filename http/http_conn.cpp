@@ -110,6 +110,8 @@ void http_conn::init() {
     m_url = 0;
     m_version = 0;
     m_host = 0;
+    m_string = nullptr;
+    cgi = 0;
     m_content_length = 0;
     bytes_have_send = 0;
     bytes_have_send = 0;
@@ -269,12 +271,13 @@ http_conn::HTTP_CODE http_conn::parse_read() {
 http_conn::HTTP_CODE http_conn::parse_request_line(char* text) {
     // GET /index.html HTTP/1.1
     m_url = strpbrk(text, " ");
-    *m_url++ = '\0';    // m_url = "/index.html HTTP/1.1"
-    char* method = text;    // method = "GET"
+    *m_url++ = '\0';      // m_url = "/index.html HTTP/1.1"
+    char* method = text;  // method = "GET"
     if (strcasecmp(method, "GET") == 0) {
         m_method = GET;
     } else if (strcasecmp(method, "POST") == 0) {
         m_method = POST;
+        cgi = 1;
     } else {
         return BAD_REQUEST;
     }
@@ -283,14 +286,14 @@ http_conn::HTTP_CODE http_conn::parse_request_line(char* text) {
     if (!m_version) {
         return BAD_REQUEST;
     }
-    *m_version++ = '\0';    // m_version = "HTTP/1.1"
+    *m_version++ = '\0';  // m_version = "HTTP/1.1"
     // 只支持HTTP/1.1
     if (strcasecmp(m_version, "HTTP/1.1") != 0) {
         return BAD_REQUEST;
     }
     if (strncasecmp(m_url, "http://", 7) == 0) {
-        m_url += 7; // m_url = "192.168.0.107:9999/index.html"
-        m_url = strchr(m_url, '/'); // m_url = "/index.html"
+        m_url += 7;                  // m_url = "192.168.0.107:9999/index.html"
+        m_url = strchr(m_url, '/');  // m_url = "/index.html"
     }
     if (!m_url || m_url[0] != '/') {
         return BAD_REQUEST;
@@ -342,6 +345,7 @@ http_conn::HTTP_CODE http_conn::parse_headers(char* text) {
 http_conn::HTTP_CODE http_conn::parse_content(char* text) {
     if (m_read_idx >= m_content_length + m_check_idx) {
         text[m_content_length] = '\0';
+        m_string = text;
         return GET_REQUEST;
     }
     return NO_REQUEST;
@@ -383,6 +387,67 @@ http_conn::HTTP_CODE http_conn::do_request() {
     // 把网站的根目录拷贝到m_real_file，接下来会在这个根目录下找寻文件
     strcpy(m_real_file, doc_root);
     int len = strlen(doc_root);
+    // 查看申请访问的地址，如果是post则根据/后端cgi标识来选择对应的资源
+    const char* tmp = strrchr(m_url, '/');
+    // m_url和tmp应该是相等
+    printf("展示信息\n");
+    printf("%s\n", m_url);
+    printf("%s\n", tmp);
+    if (cgi == 1 && (*(tmp + 1) == '2' || *(tmp + 1) == '3')) {
+        // 2 登陆 3 注册
+        char name[100], password[100];
+        // 提取用户名和密码
+        // 将用户名和密码提取出来
+        // user=123&password=123
+        int n = strlen(m_string);
+        int idx = 0, i;
+        for (i = 5; i < n && m_string[i] != '&'; ++i) {
+            name[idx++] = m_string[i];
+        }
+        name[idx] = '\0';
+        idx = 0, i += 10;
+        for (; i < n && m_string[i] != '\0'; ++i) {
+            password[idx++] = m_string[i];
+        }
+        password[idx] = '\0';
+        // 获取成功，接下来注册或登录
+        if (*(tmp + 1) == '3') {
+            // 如果是注册，先检测合法性
+            string test_name(name);
+            string test_password(password);
+            if (user_info.find(test_name) != user_info.end()) {
+                strcpy(m_url, "/registerError.html");
+            } else {
+                string sql("INSERT INTO user_info (name, password) VALUES ('" +
+                           test_name + "', '" + test_password + "');");
+                ConnectionPool* tmp = ConnectionPool::get_pool();
+                std::shared_ptr<Connection> p = tmp->get_connection();
+                MYSQL_RES* result = nullptr;
+                // 更新数据库
+                m_lock.lock();
+                bool ret = p->update(sql);
+                if (ret) {
+                    user_info[test_name] = test_password;
+                    strcpy(m_url, "/log.html");
+                } else {
+                    strcpy(m_url, "/registerError.html");
+                }
+                m_lock.unlock();
+            }
+        } else {
+            // 登陆
+            if (user_info.find(string(name)) == user_info.end()) {
+                // 没有这个用户
+                strcpy(m_url, "/logError.html");
+            } else {
+                if (user_info[string(name)] == string(password)) {
+                    strcpy(m_url, "/welcome.html");
+                } else {
+                    strcpy(m_url, "/logError.html");
+                }
+            }
+        }
+    }
     // 在根目录后追加请求资源
     strncpy(m_real_file + len, m_url, FILENAME_LEN - len - 1);
     // 检查是否有所需要的资源文件，返回值为-1表示写入属性失败，也即没有资源
@@ -406,7 +471,8 @@ http_conn::HTTP_CODE http_conn::do_request() {
             strcpy(m_real_file + strlen(m_real_file), "index.html");
         }
         // printf("%s\n", m_real_file);
-        else return BAD_REQUEST;
+        else
+            return BAD_REQUEST;
     }
 
     // 以只读方式打开文件
@@ -554,5 +620,4 @@ void http_conn::init_mysql_result(ConnectionPool* conn_pool) {
         string password(row[1]);
         user_info[name] = password;
     }
-
 }
