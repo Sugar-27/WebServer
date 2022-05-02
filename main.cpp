@@ -128,11 +128,11 @@ int main(int argc, char* argv[]) {
     // 读取用户名和密码，进行缓存
     users->init_mysql_result(conn_pool);
     // 测试代码，看一下能否正确读取
-    for (auto& kV : users->user_info) {
-        string name = kV.first;
-        string password = kV.second;
-        cout << name << " " << password << endl;
-    }
+    // for (auto& kV : users->user_info) {
+    //     string name = kV.first;
+    //     string password = kV.second;
+    //     cout << name << " " << password << endl;
+    // }
 
     // 创建监听端口套接字
     int listenfd = socket(PF_INET, SOCK_STREAM, 0);
