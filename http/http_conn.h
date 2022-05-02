@@ -21,7 +21,9 @@
 #include <memory>
 #include <string>
 #include <unordered_map>
+#include "../md5/md5.h"
 #include "../Connection_pool/connectionPool.h"
+#include "../log/log.h"
 
 using std::string;
 

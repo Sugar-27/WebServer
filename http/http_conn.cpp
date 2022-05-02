@@ -390,9 +390,6 @@ http_conn::HTTP_CODE http_conn::do_request() {
     // 查看申请访问的地址，如果是post则根据/后端cgi标识来选择对应的资源
     const char* tmp = strrchr(m_url, '/');
     // m_url和tmp应该是相等
-    printf("展示信息\n");
-    printf("%s\n", m_url);
-    printf("%s\n", tmp);
     if (cgi == 1 && (*(tmp + 1) == '2' || *(tmp + 1) == '3')) {
         // 2 登陆 3 注册
         char name[100], password[100];
@@ -410,11 +407,11 @@ http_conn::HTTP_CODE http_conn::do_request() {
             password[idx++] = m_string[i];
         }
         password[idx] = '\0';
+        string test_name(name);
+        string test_password(MD5(password).toString());
         // 获取成功，接下来注册或登录
         if (*(tmp + 1) == '3') {
             // 如果是注册，先检测合法性
-            string test_name(name);
-            string test_password(password);
             if (user_info.find(test_name) != user_info.end()) {
                 strcpy(m_url, "/registerError.html");
             } else {
@@ -433,15 +430,19 @@ http_conn::HTTP_CODE http_conn::do_request() {
                     strcpy(m_url, "/registerError.html");
                 }
                 m_lock.unlock();
+                LOG_INFO("%s", string("新用户" + test_name + "注册成功").c_str());
+                Log::get_instance()->flush();
             }
         } else {
             // 登陆
-            if (user_info.find(string(name)) == user_info.end()) {
+            if (user_info.find(test_name) == user_info.end()) {
                 // 没有这个用户
                 strcpy(m_url, "/logError.html");
             } else {
-                if (user_info[string(name)] == string(password)) {
+                if (user_info[test_name] == test_password) {
                     strcpy(m_url, "/welcome.html");
+                    LOG_INFO("%s", string("用户" + test_name + "登陆").c_str());
+                    Log::get_instance()->flush();
                 } else {
                     strcpy(m_url, "/logError.html");
                 }
