@@ -1,9 +1,9 @@
 #include "http_conn.h"
+#include <cstring>
 
 // 网站根目录
-// doc_root = "/home/sugar/Code/WebServer/webserver"
-// const char* doc_root = "/home/zht411/Anaconda/Sugar/webServer/webserver";
-const char* doc_root = "/home/sugar/Code/WebServer/webserver";
+const char* doc_root = "/home/zht411/Anaconda/WebServer/webserver";
+// const char* doc_root = "/home/sugar/Code/WebServer/webserver";
 
 // 定义HTTP响应的一些状态信息
 const char* ok_200_title = "OK";
@@ -32,12 +32,12 @@ int setnonblocking(int fd) {
 void addfd(int epollfd, int fd, bool one_shot) {
     epoll_event ev;
     ev.data.fd = fd;
-    ev.events = EPOLLIN | EPOLLRDHUP;
+    ev.events = EPOLLIN | EPOLLRDHUP;   // 水平触发
     if (one_shot)
         ev.events |= EPOLLONESHOT;
     epoll_ctl(epollfd, EPOLL_CTL_ADD, fd, &ev);
     // 设置文件描述符非阻塞
-    // 因为如果阻塞的话，当没有数据到达时，改文件描述符会阻塞一直等待有数据到达开始处理
+    // 因为如果阻塞的话，当没有数据到达时，该文件描述符会阻塞一直等待有数据到达开始处理
     // 非阻塞则没有数据时直接返回
     setnonblocking(fd);
 }
@@ -133,18 +133,21 @@ void http_conn::close_conn() {
 
 // 一次性读入，循环读取用户数据直到数据末尾或用户断开连接
 bool http_conn::read_once() {
-    if (m_read_idx >= READ_BUFFER_SIZE)
+    if (m_read_idx >= READ_BUFFER_SIZE) {
         return false;
+    }
+        
     int read_bytes = 0;
     while (true) {
+        // 从套接字里面接收数据，存储在m_read_buf缓冲区中
         read_bytes = recv(m_sockfd, read_buffer + m_read_idx,
                           READ_BUFFER_SIZE - m_read_idx, 0);
         if (read_bytes == -1) {
-            // 没有数据
             // 这两个错误码在Linux下是一个值（在大多数系统里也是一个值）
             // 该错误码在非阻塞情况下表示无数据可读
-            if (errno == EAGAIN || errno == EWOULDBLOCK)
-                break;
+            if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                break;  // 没有数据
+            }
             return false;
         } else if (read_bytes == 0) {
             // 说明对方主动关闭连接
@@ -218,7 +221,7 @@ http_conn::HTTP_CODE http_conn::parse_read() {
     LINE_STATUS line_status = LINE_OK;
     HTTP_CODE ret = NO_REQUEST;
 
-    char* text = 0;
+    char* text = nullptr;
 
     // 考虑两种情况，前一个情况解析到了请求体；后一个情况是检验到一行数据;这两种情况都是解析到了完整的数据
     // line_status==LINE_OK是为了防止无限循环，用LINE_OPEN退出循环
@@ -270,7 +273,13 @@ http_conn::HTTP_CODE http_conn::parse_read() {
 // 解析请求行，获得HTTP连接的请求方法，目标URL，HTTP版本
 http_conn::HTTP_CODE http_conn::parse_request_line(char* text) {
     // GET /index.html HTTP/1.1
-    m_url = strpbrk(text, " ");
+    m_url = strpbrk(text, " \t");
+
+    // 没有空格或者\t则说明报文格式有误
+    if (!m_url) {
+        return BAD_REQUEST;
+    }
+
     *m_url++ = '\0';      // m_url = "/index.html HTTP/1.1"
     char* method = text;  // method = "GET"
     if (strcasecmp(method, "GET") == 0) {
@@ -295,8 +304,18 @@ http_conn::HTTP_CODE http_conn::parse_request_line(char* text) {
         m_url += 7;                  // m_url = "192.168.0.107:9999/index.html"
         m_url = strchr(m_url, '/');  // m_url = "/index.html"
     }
+    /* https的情况，暂未支持
+    if (strncasecmp(m_url, "https://", 8) == 0) {
+        m_url += 8;
+        m_url = strchr(m_url, '/');
+    }
+    */
     if (!m_url || m_url[0] != '/') {
         return BAD_REQUEST;
+    }
+    // m_url为"/"时给定默认页面，welcome.html
+    if (strlen(m_url) == 1) {
+        strcat(m_url, "index.html");
     }
     // 解析完请求行，接下来解析请求头
     m_check_state = CHECK_STATE_HEADER;
@@ -319,29 +338,27 @@ http_conn::HTTP_CODE http_conn::parse_headers(char* text) {
         // Host: 192.168.0.107:10000
         text += 5;
         // 使用strspn忽略掉Host:后面的空格，匹配上第一个不是空格的字符
-        text += strspn(text, " ");
+        text += strspn(text, " \t");
         m_host = text;
     } else if (strncasecmp(text, "Connection:", 11) == 0) {
         // Connection: keep-alive
         text += 11;
-        text += strspn(text, " ");
+        text += strspn(text, " \t");
         if (strcasecmp(text, "keep-alive") == 0) {
             m_iflink = true;
         }
     } else if (strncasecmp(text, "Content-Length:", 15) == 0) {
         text += 15;
-        text += strspn(text, " ");
+        text += strspn(text, " \t");
         m_content_length = atoi(text);
     } else {
-        // 后续使用日志的形式来记录而不是打印出来
         // 只获取了必需的头，其他的头没有解析
         // printf("oop! Unknow header: %s\n", text);
     }
     return NO_REQUEST;
 }
 
-// 解析请求体
-// 没有真正解析HTTP请求的消息体，只是判断它是否被完整的读入了
+// 解析请求体，获得相关信息（目前是用户名和密码）
 http_conn::HTTP_CODE http_conn::parse_content(char* text) {
     if (m_read_idx >= m_content_length + m_check_idx) {
         text[m_content_length] = '\0';
@@ -355,17 +372,21 @@ http_conn::HTTP_CODE http_conn::parse_content(char* text) {
 //返回值为行的读取状态，有LINE_OK,LINE_BAD,LINE_OPEN
 http_conn::LINE_STATUS http_conn::parse_line() {
     char temp;
+    // m_read_idx指向缓冲区m_read_buf的数据末尾的下一个字节
+    // m_check_idx指向从状态机当前正在分析的字节
     for (; m_check_idx < m_read_idx; ++m_check_idx) {
+        // temp为将要分析的字节
         temp = read_buffer[m_check_idx];
-        if (temp == '\r') {
+        if (temp == '\r') { // 标志字符-存在读取到完整行的可能
             if (m_check_idx + 1 == m_read_idx) {
+                // 下一个字符达到了buffer尾部，接收不完整，需要继续接收
                 return LINE_OPEN;
-            } else if (read_buffer[m_check_idx + 1] == '\n') {
+            } else if (read_buffer[m_check_idx + 1] == '\n') {  // 完整的一行
                 read_buffer[m_check_idx++] = '\0';
                 read_buffer[m_check_idx++] = '\0';  // 此时m_check_idx指向下一行
                 return LINE_OK;
             }
-            return LINE_BAD;
+            return LINE_BAD; // 都不符合，请求语法有误 
         } else if (temp == '\n') {
             // temp为'\n'可能是因为上一次解析到了'\r'但读缓存不够，现在读到了随后的'\n'
             if (m_check_idx > 0 && read_buffer[m_check_idx - 1] == '\r') {
@@ -376,7 +397,7 @@ http_conn::LINE_STATUS http_conn::parse_line() {
             return LINE_BAD;
         }
     }
-    return LINE_OPEN;
+    return LINE_OPEN;   // 没有找到\r\n，需要继续接收
 }
 
 // 当得到一个完整、正确的HTTP请求时，我们就分析目标文件的属性，

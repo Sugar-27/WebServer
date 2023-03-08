@@ -42,7 +42,7 @@ void modfd(int epollfd, int fd, int modev);
 class http_conn {
    public:
     // 定义一些状态
-    // 定义HTTP请求方法，目前只支持GET
+    // 定义HTTP请求方法，目前只支持GET和POST
     enum METHOD { GET = 0, POST, HEAD, PUT, DELETE, TRACE, OPTIONS, CONNECT };
 
     /*
@@ -118,26 +118,26 @@ class http_conn {
     int m_check_idx;   // 当前正在分析的字符在读缓冲区的位置
     int m_start_line;  // 当前正在解析的行的起始位置
     CHECK_STATE m_check_state;  // 当前状态机所处状态
+
+    // 客户请求的目标文件完整路径，内容等于doc_root+m_url
+    char m_real_file[FILENAME_LEN];
     char* m_url;                // 请求目标的文件地址
     char* m_version;            // HTTP版本
     METHOD m_method;            // 请求方法
     char* m_host;               // 主机名
-    int cgi;                    // 是否启用cgi
-    char* m_string;             // 保存post报文
-    bool m_iflink;              // HTTP请求是否保持连接
     int m_content_length;       // 请求报文的请求体的长度
-    // 客户请求的目标文件完整路径，内容等于doc_root+m_url
-    char m_real_file[FILENAME_LEN];
-    // 资源状态，用来判断文件是否存在、是否为目录、是否可读以及文件的大小信息
-    struct stat m_file_stat;
-    char* m_file_address;  // 客户请求的目标文件被映射到内存中
-    int bytes_to_send;     // 将要发送的字节数
-    int bytes_have_send;   //已经发送的字节数
-    // 我们将采用writev来执行写操作，所以定义下面两个成员，其中m_iv_count表示被写内存块的数量。
-    struct iovec m_iv[2];
-    int m_iv_count;
-    // 保护哈希表
-    locker m_lock;
+    bool m_iflink;              // HTTP请求是否保持连接
+
+    int cgi;                    // 是否启用cgi 
+    struct stat m_file_stat;    // 资源状态（存在与否、是否为目录、可读性、大小）
+    char* m_file_address;       // 客户请求的目标文件被映射到内存中
+    struct iovec m_iv[2];       // io向量机制iovec，writev来执行写操作
+    int m_iv_count;             // 被写内存块的数量
+    char* m_string;             // 保存post报文，存储请求头数据   
+    int bytes_to_send;          // 将要发送的字节数
+    int bytes_have_send;        // 已经发送的字节数
+    
+    locker m_lock; // 保护哈希表
 
    private:
     /* function */
@@ -149,10 +149,11 @@ class http_conn {
     bool process_write(HTTP_CODE ret);         // 填充HTTP应答
     void init();  // 初始化除连接以外的所有信息
     char* get_line() { return read_buffer + m_start_line; }
-    HTTP_CODE do_request();
+    HTTP_CODE do_request(); // 生成响应报文
     void unmap();  // 解除映射
 
-    bool add_status_line(int status, const char* title);  // 返回响应
+    //根据响应报文格式，生成对应8个部分，以下函数均由do_request调用
+    bool add_status_line(int status, const char* title);
     bool add_response(const char* format, ...);
     bool add_headers(int content_len);
     bool add_content_length(int content_len);
