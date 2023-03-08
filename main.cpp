@@ -117,6 +117,7 @@ int main(int argc, char* argv[]) {
     try {
         pool = new threadpool<http_conn>;
     } catch (...) {
+        LOG_INFO("%s", "服务器线程池创建失败");
         return -1;
     }
 
@@ -156,6 +157,7 @@ int main(int argc, char* argv[]) {
     // 创建epoll对象，事件数组，添加文件描述符
     epoll_event events[MAX_EVENT_NUMBER];
     epollfd = epoll_create(5);
+    assert(epollfd != -1);
 
     // 将监听文件描述符添加到epoll对象中
     // 所有线程都可以操作这个端口，因此不需要oneshot
@@ -184,6 +186,7 @@ int main(int argc, char* argv[]) {
     Log::get_instance()->flush();
 
     while (!stop_server) {
+        // 等待监控文件描述符上有事件的产生
         int number = epoll_wait(epollfd, events, MAX_EVENT_NUMBER, -1);
         if (number < 0 && (errno != EINTR)) {
             printf("Epoll failed\n");
@@ -204,7 +207,7 @@ int main(int argc, char* argv[]) {
                 }
                 if (http_conn::m_user_count >= MAX_USERS) {
                     // 目前连接数满了
-                    // 给客户端写一个信息：服务器内部正忙（未完成）
+                    // TODO：给客户端写一个信息：服务器内部正忙
                     close(connfd);
                     continue;
                 }
