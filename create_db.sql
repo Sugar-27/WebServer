@@ -1,3 +1,5 @@
+USE WebServer;
+
 CREATE TABLE IF NOT EXISTS `user_info`(
    `id` INT(11) UNSIGNED AUTO_INCREMENT,
    `name` VARCHAR(50) DEFAULT NULL,
