@@ -131,7 +131,6 @@ private:
     char* m_host;           // 主机名
     int m_content_length;   // 请求报文的请求体的长度
     bool m_iflink;          // HTTP请求是否保持连接
-    // FILETYPE m_type = HTML; // HTTP请求的文件类型
 
     int cgi; // 是否启用cgi
     struct stat m_file_stat; // 资源状态（存在与否、是否为目录、可读性、大小）
