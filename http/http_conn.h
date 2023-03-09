@@ -2,6 +2,7 @@
 #define HTTP_CONN_H
 
 #include <arpa/inet.h>
+#include <bits/types/FILE.h>
 #include <errno.h>
 #include <error.h>
 #include <fcntl.h>
@@ -40,10 +41,13 @@ void delfd(int epollfd, int fd);
 void modfd(int epollfd, int fd, int modev);
 
 class http_conn {
-   public:
+public:
     // 定义一些状态
     // 定义HTTP请求方法，目前只支持GET和POST
     enum METHOD { GET = 0, POST, HEAD, PUT, DELETE, TRACE, OPTIONS, CONNECT };
+
+    // 定义HTTP请求文件，支持html、css、js文件
+    enum FILETYPE { HTML = 0, CSS, JS };
 
     /*
         解析客户端请求时，主状态机的状态
@@ -86,7 +90,7 @@ class http_conn {
     // 数据库用的哈希表，用来存用户和密码
     static std::unordered_map<string, string> user_info;
 
-   public:
+public:
     // 所有的连接共享同一个epoll对象，也就是将所有socket上的事件都注册到同一个epoll内核事件中
     static int m_epollfd;
     // 统计用户数量
@@ -99,60 +103,62 @@ class http_conn {
 
     http_conn(){};
     ~http_conn(){};
-    void process();                                  // 处理客户端请求
-    void init(int connfd, const sockaddr_in& addr);  // 初始化新接收的连接
-    void close_conn();                               // 关闭连接
-    bool read_once();                                // 一次性读入
-    bool write_once();                               // 一次性写出
+    void process();                                 // 处理客户端请求
+    void init(int connfd, const sockaddr_in& addr); // 初始化新接收的连接
+    void close_conn();                              // 关闭连接
+    bool read_once();                               // 一次性读入
+    bool write_once();                              // 一次性写出
     static void init_mysql_result(
-        ConnectionPool* conn_pool);  // 将数据库的用户名和密码读到内存里
+        ConnectionPool* conn_pool); // 将数据库的用户名和密码读到内存里
 
-   private:
+private:
     /* data */
-    int m_sockfd;                          // 该HTTP连接的socket套接字
-    sockaddr_in m_address;                 // 通信的socket地址
-    char read_buffer[READ_BUFFER_SIZE];    // 读缓冲区
-    char write_buffer[WRITE_BUFFER_SIZE];  // 写缓冲区
-    int m_write_idx;   // 写缓冲区中待发送的字节数
-    int m_read_idx;    // 记录下一次读时开始坐标
-    int m_check_idx;   // 当前正在分析的字符在读缓冲区的位置
-    int m_start_line;  // 当前正在解析的行的起始位置
-    CHECK_STATE m_check_state;  // 当前状态机所处状态
+    int m_sockfd;                         // 该HTTP连接的socket套接字
+    sockaddr_in m_address;                // 通信的socket地址
+    char read_buffer[READ_BUFFER_SIZE];   // 读缓冲区
+    char write_buffer[WRITE_BUFFER_SIZE]; // 写缓冲区
+    int m_write_idx;  // 写缓冲区中待发送的字节数
+    int m_read_idx;   // 记录下一次读时开始坐标
+    int m_check_idx;  // 当前正在分析的字符在读缓冲区的位置
+    int m_start_line; // 当前正在解析的行的起始位置
+    CHECK_STATE m_check_state; // 当前状态机所处状态
 
     // 客户请求的目标文件完整路径，内容等于doc_root+m_url
     char m_real_file[FILENAME_LEN];
-    char* m_url;                // 请求目标的文件地址
-    char* m_version;            // HTTP版本
-    METHOD m_method;            // 请求方法
-    char* m_host;               // 主机名
-    int m_content_length;       // 请求报文的请求体的长度
-    bool m_iflink;              // HTTP请求是否保持连接
+    char* m_url;            // 请求目标的文件地址
+    char* m_version;        // HTTP版本
+    METHOD m_method;        // 请求方法
+    char* m_host;           // 主机名
+    int m_content_length;   // 请求报文的请求体的长度
+    bool m_iflink;          // HTTP请求是否保持连接
+    // FILETYPE m_type = HTML; // HTTP请求的文件类型
 
-    int cgi;                    // 是否启用cgi 
-    struct stat m_file_stat;    // 资源状态（存在与否、是否为目录、可读性、大小）
-    char* m_file_address;       // 客户请求的目标文件被映射到内存中
-    struct iovec m_iv[2];       // io向量机制iovec，writev来执行写操作
-    int m_iv_count;             // 被写内存块的数量
-    char* m_string;             // 保存post报文，存储请求头数据   
-    int bytes_to_send;          // 将要发送的字节数
-    int bytes_have_send;        // 已经发送的字节数
-    
+    int cgi; // 是否启用cgi
+    struct stat m_file_stat; // 资源状态（存在与否、是否为目录、可读性、大小）
+    char* m_file_address; // 客户请求的目标文件被映射到内存中
+    struct iovec m_iv[2]; // io向量机制iovec，writev来执行写操作
+    int m_iv_count;       // 被写内存块的数量
+    char* m_string;       // 保存post报文，存储请求头数据
+    int bytes_to_send;    // 将要发送的字节数
+    int bytes_have_send;  // 已经发送的字节数
+
     locker m_lock; // 保护哈希表
 
-   private:
+private:
     /* function */
-    HTTP_CODE parse_read();                    // 解析请求
-    HTTP_CODE parse_request_line(char* text);  // 解析请求行
-    HTTP_CODE parse_headers(char* text);       // 解析请求头
-    HTTP_CODE parse_content(char* text);       // 解析请求体
-    LINE_STATUS parse_line();                  // 解析一行
-    bool process_write(HTTP_CODE ret);         // 填充HTTP应答
-    void init();  // 初始化除连接以外的所有信息
+    HTTP_CODE parse_read();                   // 解析请求
+    HTTP_CODE parse_request_line(char* text); // 解析请求行
+    HTTP_CODE parse_headers(char* text);      // 解析请求头
+    HTTP_CODE parse_content(char* text);      // 解析请求体
+    LINE_STATUS parse_line();                 // 解析一行
+    bool process_write(HTTP_CODE ret);        // 填充HTTP应答
+    void init(); // 初始化除连接以外的所有信息
     char* get_line() { return read_buffer + m_start_line; }
     HTTP_CODE do_request(); // 生成响应报文
-    void unmap();  // 解除映射
+    void unmap();           // 解除映射
 
-    //根据响应报文格式，生成对应8个部分，以下函数均由do_request调用
+    FILETYPE refresh_content_type(); // 更新文件类型
+    // 根据响应报文格式，生成对应8个部分，以下函数均由do_request调用
     bool add_status_line(int status, const char* title);
     bool add_response(const char* format, ...);
     bool add_headers(int content_len);

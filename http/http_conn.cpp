@@ -1,4 +1,6 @@
 #include "http_conn.h"
+#include <cstdio>
+#include <cstdlib>
 #include <cstring>
 
 // 网站根目录
@@ -32,9 +34,10 @@ int setnonblocking(int fd) {
 void addfd(int epollfd, int fd, bool one_shot) {
     epoll_event ev;
     ev.data.fd = fd;
-    ev.events = EPOLLIN | EPOLLRDHUP;   // 水平触发
-    if (one_shot)
+    ev.events = EPOLLIN | EPOLLRDHUP; // 水平触发
+    if (one_shot) {
         ev.events |= EPOLLONESHOT;
+    }
     epoll_ctl(epollfd, EPOLL_CTL_ADD, fd, &ev);
     // 设置文件描述符非阻塞
     // 因为如果阻塞的话，当没有数据到达时，该文件描述符会阻塞一直等待有数据到达开始处理
@@ -82,7 +85,7 @@ void http_conn::process() {
     modfd(m_epollfd, m_sockfd, EPOLLOUT);
 }
 
-//初始化连接，外部调用初始化套接字地址
+// 初始化连接，外部调用初始化套接字地址
 void http_conn::init(int connfd, const sockaddr_in& addr) {
     m_sockfd = connfd;
     m_address = addr;
@@ -98,15 +101,15 @@ void http_conn::init(int connfd, const sockaddr_in& addr) {
     init();
 }
 
-//初始化新接受的连接
+// 初始化新接受的连接
 // check_state默认为分析请求行状态
 void http_conn::init() {
-    m_read_idx = 0;  // 读缓冲区中已经读入的客户端数据的最后一个字节的下一个位置
+    m_read_idx = 0; // 读缓冲区中已经读入的客户端数据的最后一个字节的下一个位置
     m_write_idx = 0;
-    m_check_state = CHECK_STATE_REQUESTLINE;  // 初始化状态为解析首行
-    m_check_idx = 0;   // 当前正在解析的字符在读缓冲区中的位置
-    m_start_line = 0;  // 当前正在解析的行在读缓冲区中的首位置
-    m_method = GET;    // 定义请求方法默认为GET
+    m_check_state = CHECK_STATE_REQUESTLINE; // 初始化状态为解析首行
+    m_check_idx = 0;  // 当前正在解析的字符在读缓冲区中的位置
+    m_start_line = 0; // 当前正在解析的行在读缓冲区中的首位置
+    m_method = GET;   // 定义请求方法默认为GET
     m_url = 0;
     m_version = 0;
     m_host = 0;
@@ -126,7 +129,7 @@ void http_conn::init() {
 void http_conn::close_conn() {
     if (m_sockfd != -1) {
         delfd(m_epollfd, m_sockfd);
-        m_user_count--;  // 减去关闭的用户数
+        --m_user_count; // 减去关闭的用户数
         m_sockfd = -1;
     }
 }
@@ -136,7 +139,7 @@ bool http_conn::read_once() {
     if (m_read_idx >= READ_BUFFER_SIZE) {
         return false;
     }
-        
+
     int read_bytes = 0;
     while (true) {
         // 从套接字里面接收数据，存储在m_read_buf缓冲区中
@@ -146,7 +149,7 @@ bool http_conn::read_once() {
             // 这两个错误码在Linux下是一个值（在大多数系统里也是一个值）
             // 该错误码在非阻塞情况下表示无数据可读
             if (errno == EAGAIN || errno == EWOULDBLOCK) {
-                break;  // 没有数据
+                break; // 没有数据
             }
             return false;
         } else if (read_bytes == 0) {
@@ -155,7 +158,7 @@ bool http_conn::read_once() {
         }
         m_read_idx += read_bytes;
     }
-    // printf("读到数据：\n%s\n", read_buffer);
+    // LOG_INFO("读到数据：\n%s\n", read_buffer);
     return true;
 }
 
@@ -232,7 +235,7 @@ http_conn::HTTP_CODE http_conn::parse_read() {
         text = get_line();
         // 切换新行首指针（m_start_line - 1 指向的是/0）
         m_start_line = m_check_idx;
-        // printf("got 1 http line:%s\n", text);
+        // LOG_INFO("got 1 http line:%s\n", text);
         // 主状态机：CHECK_STATE_REQUESTLINE->CHECK_STATE_HEADER->CHECK_STATE_CONTENT
         switch (m_check_state) {
             case CHECK_STATE_REQUESTLINE: {
@@ -280,8 +283,8 @@ http_conn::HTTP_CODE http_conn::parse_request_line(char* text) {
         return BAD_REQUEST;
     }
 
-    *m_url++ = '\0';      // m_url = "/index.html HTTP/1.1"
-    char* method = text;  // method = "GET"
+    *m_url++ = '\0';     // m_url = "/index.html HTTP/1.1"
+    char* method = text; // method = "GET"
     if (strcasecmp(method, "GET") == 0) {
         m_method = GET;
     } else if (strcasecmp(method, "POST") == 0) {
@@ -295,14 +298,14 @@ http_conn::HTTP_CODE http_conn::parse_request_line(char* text) {
     if (!m_version) {
         return BAD_REQUEST;
     }
-    *m_version++ = '\0';  // m_version = "HTTP/1.1"
+    *m_version++ = '\0'; // m_version = "HTTP/1.1"
     // 只支持HTTP/1.1
     if (strcasecmp(m_version, "HTTP/1.1") != 0) {
         return BAD_REQUEST;
     }
     if (strncasecmp(m_url, "http://", 7) == 0) {
-        m_url += 7;                  // m_url = "192.168.0.107:9999/index.html"
-        m_url = strchr(m_url, '/');  // m_url = "/index.html"
+        m_url += 7;                 // m_url = "192.168.0.107:9999/index.html"
+        m_url = strchr(m_url, '/'); // m_url = "/index.html"
     }
     /* https的情况，暂未支持
     if (strncasecmp(m_url, "https://", 8) == 0) {
@@ -353,7 +356,7 @@ http_conn::HTTP_CODE http_conn::parse_headers(char* text) {
         m_content_length = atoi(text);
     } else {
         // 只获取了必需的头，其他的头没有解析
-        // printf("oop! Unknow header: %s\n", text);
+        // LOG_INFO("oop! Unknow header: %s\n", text);
     }
     return NO_REQUEST;
 }
@@ -368,8 +371,8 @@ http_conn::HTTP_CODE http_conn::parse_content(char* text) {
     return NO_REQUEST;
 }
 
-//从状态机，用于分析出一行内容，判断依据：\r\n
-//返回值为行的读取状态，有LINE_OK,LINE_BAD,LINE_OPEN
+// 从状态机，用于分析出一行内容，判断依据：\r\n
+// 返回值为行的读取状态，有LINE_OK,LINE_BAD,LINE_OPEN
 http_conn::LINE_STATUS http_conn::parse_line() {
     char temp;
     // m_read_idx指向缓冲区m_read_buf的数据末尾的下一个字节
@@ -381,23 +384,23 @@ http_conn::LINE_STATUS http_conn::parse_line() {
             if (m_check_idx + 1 == m_read_idx) {
                 // 下一个字符达到了buffer尾部，接收不完整，需要继续接收
                 return LINE_OPEN;
-            } else if (read_buffer[m_check_idx + 1] == '\n') {  // 完整的一行
+            } else if (read_buffer[m_check_idx + 1] == '\n') { // 完整的一行
                 read_buffer[m_check_idx++] = '\0';
-                read_buffer[m_check_idx++] = '\0';  // 此时m_check_idx指向下一行
+                read_buffer[m_check_idx++] = '\0'; // 此时m_check_idx指向下一行
                 return LINE_OK;
             }
-            return LINE_BAD; // 都不符合，请求语法有误 
+            return LINE_BAD; // 都不符合，请求语法有误
         } else if (temp == '\n') {
             // temp为'\n'可能是因为上一次解析到了'\r'但读缓存不够，现在读到了随后的'\n'
             if (m_check_idx > 0 && read_buffer[m_check_idx - 1] == '\r') {
                 read_buffer[m_check_idx - 1] = '\0';
-                read_buffer[m_check_idx++] = '\0';  // 此时m_check_idx指向下一行
+                read_buffer[m_check_idx++] = '\0'; // 此时m_check_idx指向下一行
                 return LINE_OK;
             }
             return LINE_BAD;
         }
     }
-    return LINE_OPEN;   // 没有找到\r\n，需要继续接收
+    return LINE_OPEN; // 没有找到\r\n，需要继续接收
 }
 
 // 当得到一个完整、正确的HTTP请求时，我们就分析目标文件的属性，
@@ -451,7 +454,8 @@ http_conn::HTTP_CODE http_conn::do_request() {
                     strcpy(m_url, "/registerError.html");
                 }
                 m_lock.unlock();
-                LOG_INFO("%s", string("新用户" + test_name + "注册成功").c_str());
+                LOG_INFO("%s",
+                         string("新用户" + test_name + "注册成功").c_str());
                 Log::get_instance()->flush();
             }
         } else {
@@ -470,17 +474,36 @@ http_conn::HTTP_CODE http_conn::do_request() {
             }
         }
     }
-    // 在根目录后追加请求资源
-    strncpy(m_real_file + len, m_url, FILENAME_LEN - len - 1);
+    char ch = *(tmp + 1);
+    auto process_url = [this, len](const char* real) {
+        char* m_url_real = (char*)malloc(sizeof(char) * 200);
+        strcpy(m_url_real, real);
+        // 对网站目录和real实际地址进行拼接
+        strncpy(m_real_file + len, m_url_real, strlen(m_url_real));
+        free(m_url_real);
+    };
+    switch (ch) {
+        case '0': { // 请求资源为/0，跳转注册页面
+            process_url("/register.html");
+            break;
+        }
+        case '1': { // 请求资源为/1，跳转登陆界面
+            process_url("/log.html");
+            break;
+        }
+        default: { // 在根目录后追加请求资源
+            strncpy(m_real_file + len, m_url, FILENAME_LEN - len - 1);
+        }
+    }
     // 检查是否有所需要的资源文件，返回值为-1表示写入属性失败，也即没有资源
     if (stat(m_real_file, &m_file_stat) < 0) {
-        printf("没有资源：%s\n", m_real_file);
-        return NO_REQUEST;
+        LOG_INFO("没有资源：%s\n", m_real_file);
+        return NO_RESOURCE;
     }
 
     // 判断访问权限(可读)
     if (!(m_file_stat.st_mode & S_IROTH)) {
-        printf("请求访问文件不可读，拒绝请求\n");
+        LOG_INFO("请求访问文件不可读，拒绝请求\n");
         return FORBIDDEN_REQUEST;
     }
 
@@ -489,11 +512,8 @@ http_conn::HTTP_CODE http_conn::do_request() {
         // 请求的是目录，错误的请求
         if (strncmp(m_real_file, doc_root, strlen(doc_root)) == 0) {
             // 如果访问的是网站的根目录，返回默认网页
-            printf("enter\n");
             strcpy(m_real_file + strlen(m_real_file), "index.html");
-        }
-        // printf("%s\n", m_real_file);
-        else
+        } else
             return BAD_REQUEST;
     }
 
@@ -502,6 +522,7 @@ http_conn::HTTP_CODE http_conn::do_request() {
     // 创建内存映射
     // 设置为0时表示由系统决定映射区的起始地址
     // PROT_READ页内容能够被读取
+    // MAP_PRIVATE表示内存区域的写入不会影响原文件，是一个私有映射
     m_file_address =
         (char*)mmap(0, m_file_stat.st_size, PROT_READ, MAP_PRIVATE, fd, 0);
     // 关闭文件描述符，防止被文件描述被过度占用
@@ -515,6 +536,19 @@ void http_conn::unmap() {
         munmap(m_file_address, m_file_stat.st_size);
         m_file_address = nullptr;
     }
+}
+
+http_conn::FILETYPE http_conn::refresh_content_type() {
+    int url_len = strlen(m_url);
+    auto type = HTML;
+    if (url_len > 2 && strcmp(m_url + url_len - 2, "js") == 0) {
+        type = JS;
+    } else if (url_len > 3 && strcmp(m_url + url_len - 3, "css") == 0) {
+        type = CSS;
+    } else if (url_len > 4 && strcmp(m_url + url_len - 4, "html") == 0) {
+        type = HTML;
+    }
+    return type;
 }
 
 bool http_conn::add_response(const char* format, ...) {
@@ -554,7 +588,15 @@ bool http_conn::add_content(const char* content) {
 }
 
 bool http_conn::add_content_type() {
-    return add_response("Content-Type:%s\r\n", "text/html");
+    auto type = refresh_content_type();
+    switch (type) {
+        case HTML:
+            return add_response("Content-Type:%s\r\n", "text/html");
+        case JS:
+            return add_response("Content-Type:%s\r\n", "application/json");
+        case CSS:
+            return add_response("Content-Type:%s\r\n", "text/css");
+    }
 }
 
 bool http_conn::add_linger() {
@@ -562,9 +604,7 @@ bool http_conn::add_linger() {
                         (m_iflink == true) ? "keep-alive" : "close");
 }
 
-bool http_conn::add_blank_line() {
-    return add_response("%s", "\r\n");
-}
+bool http_conn::add_blank_line() { return add_response("%s", "\r\n"); }
 
 // 根据服务器处理HTTP请求的结果，决定返回给客户端的内容
 bool http_conn::process_write(HTTP_CODE ret) {
@@ -624,12 +664,12 @@ bool http_conn::process_write(HTTP_CODE ret) {
 void http_conn::init_mysql_result(ConnectionPool* conn_pool) {
     std::shared_ptr<Connection> p = conn_pool->get_connection();
     string sql = "select name, password from user_info;";
-    //在user表中检索username，passwd数据，浏览器端输入
+    // 在user表中检索username，passwd数据，浏览器端输入
     MYSQL_RES* result = nullptr;
     // 从表中检索完整的结果集
     result = p->query(sql);
     if (!result) {
-        cout << "查询失败" << endl;
+        LOG_ERROR("数据库查询失败\n");
         return;
     }
     // 返回结果集中的列数
