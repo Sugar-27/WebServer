@@ -316,7 +316,7 @@ http_conn::HTTP_CODE http_conn::parse_request_line(char* text) {
     if (!m_url || m_url[0] != '/') {
         return BAD_REQUEST;
     }
-    // m_url为"/"时给定默认页面，welcome.html
+    // m_url为"/"时给定默认页面，index.html
     if (strlen(m_url) == 1) {
         strcat(m_url, "index.html");
     }
@@ -489,6 +489,18 @@ http_conn::HTTP_CODE http_conn::do_request() {
         }
         case '1': { // 请求资源为/1，跳转登陆界面
             process_url("/log.html");
+            break;
+        }
+        case '5': { // 请求资源为/1，跳转登陆界面
+            process_url("/picture.html");
+            break;
+        }
+        case '6': { // 请求资源为/1，跳转登陆界面
+            process_url("/video.html");
+            break;
+        }
+        case '7': { // 请求资源为/1，跳转登陆界面
+            process_url("/fans.html");
             break;
         }
         default: { // 在根目录后追加请求资源
