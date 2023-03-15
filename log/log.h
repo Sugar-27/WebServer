@@ -22,7 +22,7 @@ class Log {
     // 异步写日志公有方法，调用私有方法async_write_log
     static void* flush_log_thread(void* args) {
         Log::get_instance()->async_write_log();
-        return NULL;
+        return nullptr;
     }
 
     // 初始化
@@ -40,7 +40,7 @@ class Log {
         m_is_async = false;
     }
     ~Log() {
-        if (m_file != NULL) {
+        if (m_file != nullptr) {
             fclose(m_file);
         }
     }

@@ -12,7 +12,7 @@ bool Log::init(const char* file_name,
         m_queue = new block_queue<string>(max_queue_size);
         pthread_t tid;
         // flush_log_thread为回调函数，这里表示创建线程异步写日志
-        pthread_create(&tid, NULL, flush_log_thread, NULL);
+        pthread_create(&tid, nullptr, flush_log_thread, nullptr);
     }
 
     // 输出内容的长度
@@ -20,13 +20,13 @@ bool Log::init(const char* file_name,
     // 日志的最大行数
     m_log_split_lines = split_lines;
     // 正常过程应该只初始化一次，这里防止特殊情况
-    // if (m_buf != NULL) {
-    //     delete[] m_buf;
-    // }
+    if (m_buf != nullptr) {
+        delete[] m_buf;
+    }
     m_buf = new char[m_log_buf_size];
-    memset(m_buf, '\0', sizeof(m_buf));
+    memset(m_buf, '\0', sizeof(m_log_buf_size));
 
-    time_t t = time(NULL);
+    time_t t = time(nullptr);
     struct tm* sys_tm = localtime(&t);
     struct tm my_tm = *sys_tm;
 
@@ -35,10 +35,13 @@ bool Log::init(const char* file_name,
     char log_full_name[256] = {0};
 
     // 相当于自定义log到文件名，如果没输入文件名就用时间+文件名作为日志名
-    if (p == NULL) {
+    if (p == nullptr) {
         snprintf(log_full_name, 255, "%d_%02d_%02d_%s", my_tm.tm_year + 1900,
                  my_tm.tm_mon + 1, my_tm.tm_mday, file_name);
     } else {
+        // 将/的位置向后移动一个位置，然后复制到logname中
+        // p - file_name + 1是文件所在路径文件夹的长度
+        // dirname相当于./
         strcpy(m_log_name, p + 1);
         strncpy(m_log_dir, file_name, p - file_name + 1);
         snprintf(log_full_name, 255, "%s%d_%02d_%02d_%s", m_log_dir,
@@ -50,7 +53,7 @@ bool Log::init(const char* file_name,
     // "a"追加到一个文件。
     // 写操作向文件末尾追加数据。如果文件不存在，则创建文件。
     m_file = fopen(log_full_name, "a");
-    if (m_file == NULL) {
+    if (m_file == nullptr) {
         return false;
     }
     return true;
@@ -59,7 +62,7 @@ bool Log::init(const char* file_name,
 // 写日志
 void Log::write_log(int level, const char* format, ...) {
     struct timeval now = {0, 0};
-    gettimeofday(&now, NULL);
+    gettimeofday(&now, nullptr);
     time_t t = now.tv_sec;
     // t的值被分解为tm结构
     struct tm* sys_tm = localtime(&t);
@@ -103,7 +106,7 @@ void Log::write_log(int level, const char* format, ...) {
             m_count = 0;
         } else {
             // 超过了最大行，在之前的日志名基础上加后缀, m_count/m_split_lines
-            snprintf(new_log, 255, "%s%s%s.%lld", m_log_dir, tail, m_log_name,
+            snprintf(new_log, 255, "%s%s%s_%lld", m_log_dir, tail, m_log_name,
                      m_count / m_log_split_lines);
         }
         m_file = fopen(new_log, "a");
@@ -132,7 +135,6 @@ void Log::write_log(int level, const char* format, ...) {
         m_queue->push(log_str);
     } else {
         m_lock.lock();
-        // printf("%s", log_str.c_str());
         fputs(log_str.c_str(), m_file);
         m_lock.unlock();
     }
