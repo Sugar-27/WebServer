@@ -80,13 +80,51 @@ Demo演示
 - [x] main函数封装重构
 - [x] 改进编译方式，增加MySQL配置文件，只需配置一次SQL信息
 
+目录树
+------------
+
+```
+.
+├── Connection_pool 数据库连接池        
+├── http            http连接类
+├── locker          Linux下互斥锁、信号量、条件变量封装
+├── log             日志模块
+├── md5             MD5加密模块
+├── threadpool      线程池
+├── timer           定时器
+├── test_presure    webbench压力测试
+│
+├── webserver       静态资源
+│   ├── source      媒体资源
+│   │   ├── pictures
+│   │   └── videos     
+│   ├── style      
+│   │    ├── js
+│   │    └── css
+│   ├── index.html
+│   ├── log.html
+│   ├── logError.html
+│   ├── register.html
+│   ├── resiterError.html
+│   ├── welcome.html
+│   ├── picture.html
+│   ├── video.html
+│   └── fans.html
+│
+├── main.cpp        主程序
+├── build           数据库连接池配置文件 
+├── makefile
+├── GET报文.txt
+└── README.md
+```
+
 快速运行
 ------------
 
 * 服务器测试环境
 
-  * Ubuntu版本16.04
-  * MySQL版本5.7.29
+  * Ubuntu 版本20.04.2
+  * MySQL  版本8.0.32
 
 * 浏览器测试环境
 
