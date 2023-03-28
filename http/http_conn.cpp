@@ -186,6 +186,7 @@ bool http_conn::write_once() {
                 modfd(m_epollfd, m_sockfd, EPOLLOUT);
                 return true;
             }
+            // 如果发送失败，但不是缓冲区问题，取消映射
             unmap();
             return false;
         }
@@ -205,6 +206,7 @@ bool http_conn::write_once() {
         if (bytes_to_send <= 0) {
             // 没有数据要发送了
             unmap();
+            // EPOLL树上重置EPOLLONESHOT事件
             modfd(m_epollfd, m_sockfd, EPOLLIN);
 
             if (m_iflink) {
@@ -621,6 +623,7 @@ bool http_conn::add_blank_line() { return add_response("%s", "\r\n"); }
 // 根据服务器处理HTTP请求的结果，决定返回给客户端的内容
 bool http_conn::process_write(HTTP_CODE ret) {
     switch (ret) {
+        // 内部错误，500
         case INTERNAL_ERROR:
             add_status_line(500, error_500_title);
             add_headers(strlen(error_500_form));
@@ -628,6 +631,7 @@ bool http_conn::process_write(HTTP_CODE ret) {
                 return false;
             }
             break;
+        // 报文语法有误，404
         case BAD_REQUEST:
             add_status_line(400, error_400_title);
             add_headers(strlen(error_400_form));
@@ -635,6 +639,7 @@ bool http_conn::process_write(HTTP_CODE ret) {
                 return false;
             }
             break;
+        // 资源不存在，404
         case NO_RESOURCE:
             add_status_line(404, error_404_title);
             add_headers(strlen(error_404_form));
@@ -642,6 +647,7 @@ bool http_conn::process_write(HTTP_CODE ret) {
                 return false;
             }
             break;
+        // 资源没有访问权限，403
         case FORBIDDEN_REQUEST:
             add_status_line(403, error_403_title);
             add_headers(strlen(error_403_form));
@@ -649,6 +655,7 @@ bool http_conn::process_write(HTTP_CODE ret) {
                 return false;
             }
             break;
+        //文件存在，200
         case FILE_REQUEST:
             add_status_line(200, ok_200_title);
             add_headers(m_file_stat.st_size);
@@ -661,11 +668,11 @@ bool http_conn::process_write(HTTP_CODE ret) {
             bytes_to_send = m_write_idx + m_file_stat.st_size;
 
             return true;
-            // break;
 
         default:
             return false;
     }
+    // 除FILE_REQUEST状态外，其余状态只申请一个iovec，指向响应报文缓冲区
     m_iv[0].iov_base = write_buffer;
     m_iv[0].iov_len = m_write_idx;
     m_iv_count = 1;

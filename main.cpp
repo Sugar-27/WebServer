@@ -227,9 +227,6 @@ int main(int argc, char* argv[]) {
                 timer_list.add_timer(timer);
             } else if (events[i].events & (EPOLLHUP | EPOLLRDHUP | EPOLLERR)) {
                 // 服务器端断开连接，响应定时器关闭
-                // users[sockfd].close_conn();
-
-                // 关闭定时器
                 m_timer* timer = users_timers[sockfd].timer;
                 timer->cb_func(&users_timers[sockfd]);
                 if (timer) {
@@ -270,11 +267,9 @@ int main(int argc, char* argv[]) {
                     if (timer) {
                         timer->expire = time(nullptr) + 3 * TIMESLOT;
                         timer_list.mod_timer(timer);
-                        // printf("调整一次定时器\n");
                     }
                 } else {
                     // 关闭连接，删除定时器
-                    // users[sockfd].close_conn();
                     timer->cb_func(&users_timers[sockfd]);
                     if (timer) {
                         timer_list.del_timer(timer);
