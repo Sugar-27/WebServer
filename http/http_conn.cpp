@@ -158,7 +158,7 @@ bool http_conn::read_once() {
         }
         m_read_idx += read_bytes;
     }
-    // LOG_INFO("读到数据：\n%s\n", read_buffer);
+    LOG_INFO("读到数据：\n%s\n", read_buffer);
     return true;
 }
 
